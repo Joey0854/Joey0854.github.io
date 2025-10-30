@@ -40,8 +40,8 @@ const cube2 = new THREE.Mesh(geometry, material2);
 
 cube2.position.y = -5; // 第二個 cube 放在下面
 
-//scene.add(cube1);
-//scene.add(cube2);
+scene.add(cube1);
+scene.add(cube2);
 
 camera.position.set(5, 2, 0);
 let angle = 0;
