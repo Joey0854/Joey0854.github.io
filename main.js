@@ -1,323 +1,349 @@
+// =============================================
+// StarFieldScene：模組化星空動畫場景
+// 使用 BufferGeometry + GSAP Timeline + lil-gui
+// =============================================
 import * as THREE from 'three';
 import { gsap } from 'gsap';
+import GUI from 'lil-gui';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 
-// ===== 可調參數 =====
-const STAR_COUNT             = 3600;
-const STAR_RADIUS            = 500;
-const STAR_RADIUS_MIN        = 0.4;
-const STAR_RADIUS_MAX        = 0.7;
-const STAR_FLICKER_AMT       = 0.001;
-const STAR_FLICKER_FREQ      = 0.001;
-const STAR_VEL_MIN           = -0.01;
-const STAR_VEL_MAX           =  0.01;
-const GO_DIST_MIN            = 50;
-const CAM_MOVE_TIME          = 2.4;
-const CAM_ROTATE_TIME        = 1.5;
-const CAM_ROTATE_EASE        = 'power1.in';
-const FOV_ORIGINAL           = 85;
-const FOV_TARGET             = 170;
-const FOV_ANIMATE_TIME       = 1.2;
-const FOV_START_MOVE_PCT     = 0.0;
-const MOVE_START_FOV_REVERT_PCT = 0.8;
-const CAMERA_INIT_POS        = new THREE.Vector3(0, 0, 30);
-const CAMERA_INIT_LOOK       = new THREE.Vector3(0, 0, 0);
-const GO_FRONT_DEG           = 70;
-const BLOOM_STRENGTH_INIT    = 0.25;
-const BLOOM_STRENGTH_TARGET  = 10.0;
-const BLOOM_ANIMATE_TIME     = 2.5;
-// 星星最大放大倍數
-const STAR_ENLARGE_SCALE     = 5.0;
-// 淡出黑秒數
-const FADE_TO_BLACK_TIME     = 2.2;
+// =============================================
+// 星場系統 Class
+// =============================================
+export class StarFieldScene {
 
-let whiteout = false;
+    constructor() {
+        this.params = {
+            starCount: 3600,
+            radius: 500,
+            sizeMin: 0.4,
+            sizeMax: 0.7,
+            flickerAmt: 0.001,
+            flickerFreq: 0.001,
+            velocityMin: -0.01,
+            velocityMax:  0.01,
+            minGoDist: 50,
 
-const scene   = new THREE.Scene();
-scene.background = new THREE.Color(0x000000);
+            fovOriginal: 85,
+            fovTarget: 170,
+            fovTime: 1.2,
 
-const camera  = new THREE.PerspectiveCamera(
-    FOV_ORIGINAL,
-    window.innerWidth / window.innerHeight,
-    0.1, 1000
-);
-camera.position.copy(CAMERA_INIT_POS);
+            camMoveTime: 2.4,
+            camRotateTime: 1.5,
+            camRotateEase: "power1.in",
 
-const renderer = new THREE.WebGLRenderer();
-renderer.setSize(window.innerWidth, window.innerHeight);
-document.body.appendChild(renderer.domElement);
+            bloomInit: 0.25,
+            bloomTarget: 10.0,
+            bloomTime: 2.5,
 
-const composer = new EffectComposer(renderer);
-composer.addPass(new RenderPass(scene, camera));
-const bloomPass = new UnrealBloomPass(
-    new THREE.Vector2(window.innerWidth, window.innerHeight),
-    BLOOM_STRENGTH_INIT, 0.8, 0.4
-);
-composer.addPass(bloomPass);
+            enlargeScale: 5.0,
+            fadeToBlackTime: 2.2,
 
-window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    composer.setSize(window.innerWidth, window.innerHeight);
-});
+            goFrontAngleDeg: 70,
+        };
 
-const balls = [];
-const velocityArr = [];
-for (let i = 0; i < STAR_COUNT; i++) {
-    const radius = Math.random() * (STAR_RADIUS_MAX - STAR_RADIUS_MIN) + STAR_RADIUS_MIN;
-    const color = new THREE.Color(
-        Math.random() * 0.35 + 0.65,
-        Math.random() * 0.35 + 0.65,
-        Math.random() * 0.55 + 0.45
-    );
-    const material = new THREE.MeshPhongMaterial({
-        color: color,
-        emissive: color,
-        emissiveIntensity: Math.random() * 0.8 + 0.4,
-        shininess: 100
-    });
-    const geometry = new THREE.SphereGeometry(radius, 16, 16);
-    const ball = new THREE.Mesh(geometry, material);
+        this.whiteout = false;
+        this.lastTargetStar = null;
 
-    const u = Math.random();
-    const r = STAR_RADIUS * Math.cbrt(u);
-    const costheta = Math.random() * 2 - 1;
-    const theta = Math.acos(costheta);
-    const phi = Math.random() * 2 * Math.PI;
+        this.initThree();
+        this.createStars();
+        this.setupGUI();
+        this.startRenderLoop();
+    }
 
-    ball.position.x = r * Math.sin(theta) * Math.cos(phi);
-    ball.position.y = r * Math.sin(theta) * Math.sin(phi);
-    ball.position.z = r * Math.cos(theta);
+    // =============================================
+    // 初始化 THREE 基本系統
+    // =============================================
+    initThree() {
+        this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color(0x000000);
 
-    balls.push(ball);
-    scene.add(ball);
+        this.camera = new THREE.PerspectiveCamera(
+            this.params.fovOriginal,
+            window.innerWidth / window.innerHeight,
+            0.1, 1000
+        );
+        this.camera.position.set(0, 0, 30);
 
-    velocityArr.push({
-        x: Math.random() * (STAR_VEL_MAX - STAR_VEL_MIN) + STAR_VEL_MIN,
-        y: Math.random() * (STAR_VEL_MAX - STAR_VEL_MIN) + STAR_VEL_MIN,
-        z: Math.random() * (STAR_VEL_MAX - STAR_VEL_MIN) + STAR_VEL_MIN
-    });
-}
+        this.renderer = new THREE.WebGLRenderer();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(this.renderer.domElement);
 
-scene.add(new THREE.AmbientLight(0x222244, 1));
-const pointLight = new THREE.PointLight(0xffffff, 0.7);
-pointLight.position.set(0, 0, 50);
-scene.add(pointLight);
+        this.composer = new EffectComposer(this.renderer);
+        this.composer.addPass(new RenderPass(this.scene, this.camera));
 
-let starsAnimating = true;
-let animateId = null;
-function animate() {
-    if (whiteout) return;
-    if (starsAnimating) {
-        balls.forEach((ball, i) => {
-            ball.material.emissiveIntensity += Math.sin(Date.now()*STAR_FLICKER_FREQ + i) * STAR_FLICKER_AMT;
-            ball.position.x += velocityArr[i].x;
-            ball.position.y += velocityArr[i].y;
-            ball.position.z += velocityArr[i].z;
+        this.bloomPass = new UnrealBloomPass(
+            new THREE.Vector2(window.innerWidth, window.innerHeight),
+            this.params.bloomInit, 0.8, 0.4
+        );
+        this.composer.addPass(this.bloomPass);
+
+        window.addEventListener("resize", () => this.onResize());
+    }
+
+    // =============================================
+    // 建立星星 (BufferGeometry)
+    // =============================================
+    createStars() {
+        const p = this.params;
+        const positions = [];
+        const sizes = [];
+        const colors = [];
+        const emissivePower = [];
+
+        const tempColor = new THREE.Color();
+
+        this.starVel = [];
+
+        for (let i = 0; i < p.starCount; i++) {
+
+            // ----- 亂數位置：球體分布 -----
+            const u = Math.random();
+            const r = p.radius * Math.cbrt(u);
+            const costheta = Math.random() * 2 - 1;
+            const theta = Math.acos(costheta);
+            const phi = Math.random() * 2 * Math.PI;
+
+            const x = r * Math.sin(theta) * Math.cos(phi);
+            const y = r * Math.sin(theta) * Math.sin(phi);
+            const z = r * Math.cos(theta);
+
+            positions.push(x, y, z);
+
+            // ----- 亂數顏色 -----
+            tempColor.setRGB(
+                Math.random() * 0.35 + 0.65,
+                Math.random() * 0.35 + 0.65,
+                Math.random() * 0.55 + 0.45
+            );
+            colors.push(tempColor.r, tempColor.g, tempColor.b);
+
+            // ----- 大小 -----
+            sizes.push(Math.random() * (p.sizeMax - p.sizeMin) + p.sizeMin);
+
+            // ----- 發光強度 -----
+            emissivePower.push(Math.random() * 0.8 + 0.4);
+
+            // ----- 每顆星星的速度 -----
+            this.starVel.push({
+                x: Math.random() * (p.velocityMax - p.velocityMin) + p.velocityMin,
+                y: Math.random() * (p.velocityMax - p.velocityMin) + p.velocityMin,
+                z: Math.random() * (p.velocityMax - p.velocityMin) + p.velocityMin,
+            });
+        }
+
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+        geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+        geo.setAttribute("size", new THREE.Float32BufferAttribute(sizes, 1));
+        geo.setAttribute("emissive", new THREE.Float32BufferAttribute(emissivePower, 1));
+
+        const mat = new THREE.PointsMaterial({
+            vertexColors: true,
+            size: 1.5,
+            transparent: true,
+            opacity: 1.0,
+            sizeAttenuation: true
+        });
+
+        this.stars = new THREE.Points(geo, mat);
+        this.scene.add(this.stars);
+    }
+
+    // =============================================
+    // lil-gui 設定
+    // =============================================
+    setupGUI() {
+        const gui = new GUI();
+
+        gui.add(this.bloomPass, "strength", 0, 20).name("Bloom 強度");
+        gui.add(this.camera, "fov", 30, 170).name("Camera FOV").onChange(() => {
+            this.camera.updateProjectionMatrix();
         });
     }
-    composer.render();
-    animateId = requestAnimationFrame(animate);
-}
-animate();
 
-const buttonGoto = document.createElement('button');
-buttonGoto.innerText = '前往遠距星星(動畫分段)';
-buttonGoto.onclick = gotoFrontFarStar;
-styleButton(buttonGoto, 16, 20);
-document.body.appendChild(buttonGoto);
+    // =============================================
+    // 點擊後執行：飛向前方某顆星
+    // 使用 GSAP Timeline 管理動畫
+    // =============================================
+    gotoFrontStar() {
+        const tl = gsap.timeline();
 
-const buttonBack = document.createElement('button');
-buttonBack.innerText = '返回初始位置';
-buttonBack.onclick = returnToInit;
-styleButton(buttonBack, 60, 20);
-document.body.appendChild(buttonBack);
+        const p = this.params;
 
-let lastTargetStar = null;
-function gotoFrontFarStar() {
-    starsAnimating = false;
-    let camDir = new THREE.Vector3().subVectors(CAMERA_INIT_LOOK, CAMERA_INIT_POS).normalize();
-    const maxAngleRad = THREE.MathUtils.degToRad(GO_FRONT_DEG);
+        // === 選擇前方的星星 ===
+        const camPos = new THREE.Vector3(0, 0, 30);
+        const camDir = new THREE.Vector3(0, 0, -1).normalize();
+        const angleMax = THREE.MathUtils.degToRad(p.goFrontAngleDeg);
 
-    const candidates = balls.filter(ball => {
-        const toStar = new THREE.Vector3().subVectors(ball.position, CAMERA_INIT_POS).normalize();
-        const dist = ball.position.distanceTo(CAMERA_INIT_POS);
-        const dot = toStar.dot(camDir);
-        const angle = Math.acos(dot);
-        return dist > GO_DIST_MIN && angle < maxAngleRad;
-    });
+        const pos = this.stars.geometry.getAttribute("position");
+        const candidates = [];
 
-    if (candidates.length === 0) return;
+        for (let i = 0; i < p.starCount; i++) {
+            const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+            const starPos = new THREE.Vector3(x, y, z);
 
-    const star = candidates[Math.floor(Math.random() * candidates.length)];
-    lastTargetStar = star;
-    const starPos = star.position.clone();
+            const toStar = starPos.clone().sub(camPos).normalize();
+            const dist = starPos.distanceTo(camPos);
+            const angle = Math.acos(toStar.dot(camDir));
 
-    const startLook = CAMERA_INIT_LOOK.clone();
-    let lookTarget = startLook.clone();
-    gsap.to(lookTarget, {
-        x: starPos.x, y: starPos.y, z: starPos.z,
-        duration: CAM_ROTATE_TIME,
-        ease: CAM_ROTATE_EASE,
-        onUpdate: () => {
-            camera.lookAt(lookTarget);
-            composer.render();
-        },
-        onComplete: () => {
-            let moveStarted = false, fovRevertStarted = false;
-            const direction = new THREE.Vector3().subVectors(starPos, camera.position).normalize();
-            const midTargetPos = starPos.clone().addScaledVector(direction, -3);
+            if (dist > p.minGoDist && angle < angleMax)
+                candidates.push(starPos);
+        }
 
-            gsap.to(camera, {
-                fov: FOV_TARGET,
-                duration: FOV_ANIMATE_TIME,
-                onUpdate: function() {
-                    camera.updateProjectionMatrix();
-                    composer.render();
-                    const t = this.progress();
-                    if (!moveStarted && t >= FOV_START_MOVE_PCT) {
-                        moveStarted = true;
+        if (candidates.length === 0) return;
 
-                        // 前進到距離3
-                        gsap.to(camera.position, {
-                            x: midTargetPos.x,
-                            y: midTargetPos.y,
-                            z: midTargetPos.z,
-                            duration: CAM_MOVE_TIME,
-                            onUpdate: function() {
-                                camera.lookAt(starPos);
-                                composer.render();
-                                const t2 = this.progress();
-                                if (!fovRevertStarted && t2 >= MOVE_START_FOV_REVERT_PCT) {
-                                    fovRevertStarted = true;
-                                    gsap.to(camera, {
-                                        fov: FOV_ORIGINAL,
-                                        duration: FOV_ANIMATE_TIME,
-                                        onUpdate: () => {
-                                            camera.updateProjectionMatrix();
-                                            composer.render();
-                                        },
-                                        onComplete: () => {
-                                            // ======= bloom和星星放大同步 =======
-                                            gsap.to(bloomPass, {
-                                                strength: BLOOM_STRENGTH_TARGET,
-                                                duration: BLOOM_ANIMATE_TIME,
-                                                ease: "power1.out",
-                                                onUpdate: () => composer.render()
-                                            });
-                                            // 放大 star 尺寸
-                                            gsap.to(star.scale, {
-                                                x: STAR_ENLARGE_SCALE,
-                                                y: STAR_ENLARGE_SCALE,
-                                                z: STAR_ENLARGE_SCALE,
-                                                duration: BLOOM_ANIMATE_TIME,
-                                                ease: "power1.out",
-                                                onUpdate: () => composer.render(),
-                                                onComplete: () => {
-                                                    switchToWhiteThenFadeBlack();
-                                                }
-                                            });
-                                        }
-                                    });
-                                }
-                            }
-                        });
-                    }
+        const target = candidates[Math.floor(Math.random() * candidates.length)];
+        this.lastTargetStar = target.clone();
+
+        // === 動畫：看向那顆星 ===
+        tl.to(this.camera.rotation, {
+            x: 0, y: 0, z: 0,
+            duration: p.camRotateTime,
+            ease: p.camRotateEase
+        });
+
+        // === 動畫：FOV 擴張 ===
+        tl.to(this.camera, {
+            fov: p.fovTarget,
+            duration: p.fovTime,
+            onUpdate: () => this.camera.updateProjectionMatrix()
+        });
+
+        // === 動畫：移動到星星前方 ===
+        const mid = target.clone().addScaledVector(
+            target.clone().sub(this.camera.position).normalize(), -3
+        );
+
+        tl.to(this.camera.position, {
+            x: mid.x, y: mid.y, z: mid.z,
+            duration: p.camMoveTime,
+            onUpdate: () => this.camera.lookAt(target)
+        });
+
+        // === FOV 收回 ===
+        tl.to(this.camera, {
+            fov: p.fovOriginal,
+            duration: p.fovTime,
+            onUpdate: () => this.camera.updateProjectionMatrix()
+        });
+
+        // === Bloom + 星星放大 ===
+        tl.to(this.bloomPass, {
+            strength: p.bloomTarget,
+            duration: p.bloomTime
+        }, "-=1.2");
+
+        tl.to(this.stars.scale, {
+            x: p.enlargeScale,
+            y: p.enlargeScale,
+            z: p.enlargeScale,
+            duration: p.bloomTime
+        }, "<");
+
+        // === 最後：白→黑過場 ===
+        tl.add(() => this.fadeWhiteToBlack());
+    }
+
+    // =============================================
+    // 白 → 黑
+    // =============================================
+    fadeWhiteToBlack() {
+        const tl = gsap.timeline();
+
+        this.whiteout = true;
+        this.scene.background = new THREE.Color(1, 1, 1);
+
+        const v = { t: 1 };
+
+        tl.to(v, {
+            t: 0,
+            duration: this.params.fadeToBlackTime,
+            ease: "power1.inOut",
+            onUpdate: () => {
+                this.scene.background.setRGB(v.t, v.t, v.t);
+            }
+        });
+    }
+
+    // =============================================
+    // 重新回到初始位置
+    // =============================================
+    returnToInit() {
+        if (!this.lastTargetStar) return;
+
+        const tl = gsap.timeline();
+
+        const p = this.params;
+
+        // Bloom 收回
+        tl.to(this.bloomPass, {
+            strength: p.bloomInit,
+            duration: p.bloomTime
+        });
+
+        // 回到原點相機
+        tl.to(this.camera.position, {
+            x: 0, y: 0, z: 30,
+            duration: p.camMoveTime
+        });
+
+        // 恢復看向中心
+        tl.to(this.camera.rotation, {
+            x: 0, y: 0, z: 0,
+            duration: p.camRotateTime
+        });
+
+        // 星星縮回
+        tl.to(this.stars.scale, {
+            x: 1, y: 1, z: 1,
+            duration: 1.0
+        });
+    }
+
+    // =============================================
+    // 視窗 Resize
+    // =============================================
+    onResize() {
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.composer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // =============================================
+    // Render Loop
+    // =============================================
+    startRenderLoop() {
+        const p = this.params;
+
+        const pos = this.stars.geometry.getAttribute("position");
+
+        const render = () => {
+            if (!this.whiteout) {
+
+                // 星星閃爍 + 移動
+                const now = Date.now() * p.flickerFreq;
+
+                for (let i = 0; i < p.starCount; i++) {
+                    const vx = this.starVel[i].x;
+                    const vy = this.starVel[i].y;
+                    const vz = this.starVel[i].z;
+
+                    pos.array[i*3]     += vx;
+                    pos.array[i*3 + 1] += vy;
+                    pos.array[i*3 + 2] += vz;
                 }
-            });
-        }
-    });
-}
 
-// ====== 白→黑過場 ======
-function switchToWhiteThenFadeBlack() {
-    whiteout = true;
-    if (animateId) cancelAnimationFrame(animateId);
-    while (scene.children.length) scene.remove(scene.children[0]);
-    scene.background = new THREE.Color(0xffffff);
-    camera.fov = FOV_ORIGINAL;
-    camera.updateProjectionMatrix();
-    renderer.setClearColor(0xffffff);
-    renderer.clear(true, true, true);
-    renderer.render(scene, camera);
-    composer.passes.length = 0;
-    renderer.render(scene, camera);
+                pos.needsUpdate = true;
+            }
 
-    // GSAP：全白到全黑過場
-    let v = { t: 1 };
-    gsap.to(v, {
-        t: 0,
-        duration: FADE_TO_BLACK_TIME,
-        ease: 'power1.inOut',
-        onUpdate: () => {
-            scene.background.setRGB(v.t, v.t, v.t);
-            renderer.setClearColor(scene.background);
-            renderer.clear(true, true, true);
-            renderer.render(scene, camera);
-        }
-    });
-}
+            this.composer.render();
+            requestAnimationFrame(render);
+        };
 
-function returnToInit() {
-    if (!lastTargetStar) return;
-    whiteout = false;
-    starsAnimating = false;
-    const starPos = lastTargetStar.position.clone();
-
-    gsap.to(bloomPass, {
-        strength: BLOOM_STRENGTH_INIT,
-        duration: BLOOM_ANIMATE_TIME,
-        ease: "power1.inOut",
-        onUpdate: () => composer.render()
-    });
-
-    gsap.to(camera.position, {
-        x: CAMERA_INIT_POS.x,
-        y: CAMERA_INIT_POS.y,
-        z: CAMERA_INIT_POS.z,
-        duration: CAM_MOVE_TIME,
-        onUpdate: () => {
-            camera.lookAt(starPos);
-            composer.render();
-        },
-        onComplete: () => {
-            // 星星縮小回原始
-            if (lastTargetStar) lastTargetStar.scale.set(1, 1, 1);
-
-            let lookTarget = starPos.clone();
-            gsap.to(lookTarget, {
-                x: CAMERA_INIT_LOOK.x,
-                y: CAMERA_INIT_LOOK.y,
-                z: CAMERA_INIT_LOOK.z,
-                duration: CAM_ROTATE_TIME,
-                onUpdate: () => {
-                    camera.lookAt(lookTarget);
-                    composer.render();
-                },
-                onComplete: () => {
-                    starsAnimating = true;
-                    whiteout = false;
-                    animate();
-                }
-            });
-        }
-    });
-}
-
-function styleButton(button, topPx, rightPx) {
-    button.style.position = 'fixed';
-    button.style.top = `${topPx}px`;
-    button.style.right = `${rightPx}px`;
-    button.style.zIndex = '10';
-    button.style.background = '#222';
-    button.style.color = '#fff';
-    button.style.padding = '8px 18px';
-    button.style.border = 'none';
-    button.style.borderRadius = '8px';
-    button.style.fontSize = '16px';
-    button.style.boxShadow = '0 2px 10px #0005';
-    button.style.cursor = 'pointer';
+        render();
+    }
 }
