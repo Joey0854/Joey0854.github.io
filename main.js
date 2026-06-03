@@ -150,8 +150,10 @@ const PARAMS = {
     bloomTime:        1,    // 光暈增強時間 (秒)
 
     // 白閃過場
-    flashTime:        5,    // 閃白持續時間 (秒)
-    fadeTime:         1.4,    // 淡回黑色時間 (秒)
+    flashTime:        2,    // 閃白持續時間 (秒)
+    fadeTime:         2,    // 淡回黑色時間 (秒)
+    flashUiFadeTime:  0.35, // 跳轉前 UI 淡出時間 (秒)
+    flashExposurePeak: 6,   // 跳轉過曝時 bloom 峰值強度
 
     // 資訊面板
     infoPanelCount:       3,      // 同時顯示幾個資訊面板（1–3）
@@ -1123,7 +1125,7 @@ class StarField {
         }
         if (action === 'scan') {
             const url = this._lastHudData && this._lastHudData.url;
-            if (url) window.location.assign(url);
+            if (url) this._flashAndNavigate(url);
             return;
         }
         if (action === 'next') { this._jumpToLabel(+1); return; }
@@ -2003,16 +2005,31 @@ class StarField {
         });
     }
 
-    // ─── 白屏過場 → 跳轉 URL ─────────────────────────────────────────────────
+    // ─── 過曝過場 → 跳轉 URL ─────────────────────────────────────────────────
     _flashAndNavigate(url) {
-        const { flashTime } = PARAMS;
-        const v = { t: 0 };
+        const { flashTime, flashUiFadeTime, flashExposurePeak } = PARAMS;
+        const exposureDelay    = flashUiFadeTime * 0.5;
+        const exposureDuration = flashTime - exposureDelay;
 
+        // 第一步：淡出所有 UI（HUD、選單、返回鍵、標題、黑邊、標籤與瞄準環）
+        const uiTargets = [this._hud, this._menu, this._backBtn, this._menuStarName, this._vignette];
+        this._labels?.forEach(({ el, reticle }) => uiTargets.push(el, reticle));
+        uiTargets.forEach((el) => {
+            if (el) gsap.to(el, { opacity: 0, duration: flashUiFadeTime });
+        });
+
+        // 第二步：延遲一點後拉高曝光（bloom 過曝 + 背景轉白 + 星雲淡出）
+        const v = { t: 0 };
         gsap.to(v, {
             t: 1,
-            duration: flashTime,
-            ease: 'power2.in',
-            onUpdate: () => this.scene.background.setRGB(v.t, v.t, v.t),
+            delay: exposureDelay,
+            duration: exposureDuration,
+            ease: 'power3.in',
+            onUpdate: () => {
+                this.scene.background.setRGB(v.t, v.t, v.t);
+                if (this._nebulaMat) this._nebulaMat.uniforms.iOpacity.value = (1 - v.t) * PARAMS.nebulaOpacity;
+                this.bloom.strength = PARAMS.bloomDefault + v.t * (flashExposurePeak - PARAMS.bloomDefault);
+            },
             onComplete: () => { window.location.assign(url); },
         });
     }
