@@ -568,25 +568,6 @@ style.textContent = `
 .data-row .key { opacity: 0.5; font-size: 10px; letter-spacing: 0.12em; }
 .data-row .val { color: #fff; font-weight: 600; font-size: 11px; }
 
-.panel-footer {
-    padding: 8px 10px;
-    border-top: 1px solid rgba(120,210,255,0.25);
-    text-align: center;
-}
-.continue-btn {
-    all: unset;
-    cursor: pointer;
-    font: 600 10px/1 ${PARAMS.fontFamily};
-    letter-spacing: 0.18em;
-    color: rgba(120,210,255,0.8);
-    padding: 5px 14px;
-    border: 1px solid rgba(120,210,255,0.4);
-    transition: background 0.15s, color 0.15s;
-}
-.continue-btn:hover {
-    background: rgba(120,210,255,0.15);
-    color: #fff;
-}
 
 /* ── 選單星球名稱標題 ── */
 #menu-star-name {
@@ -1142,7 +1123,7 @@ class StarField {
         }
         if (action === 'scan') {
             const url = this._lastHudData && this._lastHudData.url;
-            if (url) window.location.href = url;
+            if (url) window.location.assign(url);
             return;
         }
         if (action === 'next') { this._jumpToLabel(+1); return; }
@@ -1747,7 +1728,6 @@ class StarField {
             const panel = document.createElement('div');
             panel.className = 'info-panel';
 
-            const isLast = (i === count - 1);
             panel.innerHTML = `
                 <div class="scan-line"></div>
                 <div class="panel-header">
@@ -1755,14 +1735,7 @@ class StarField {
                     <span class="panel-id"></span>
                 </div>
                 <div class="panel-body"></div>
-                ${isLast ? `<div class="panel-footer">
-                    <button class="continue-btn">▶ CONTINUE</button>
-                </div>` : ''}
             `;
-
-            if (isLast) {
-                panel.querySelector('.continue-btn').addEventListener('click', () => this._closeHUD());
-            }
 
             hud.appendChild(panel);
             return { el: panel, def };
@@ -2030,6 +2003,20 @@ class StarField {
         });
     }
 
+    // ─── 白屏過場 → 跳轉 URL ─────────────────────────────────────────────────
+    _flashAndNavigate(url) {
+        const { flashTime } = PARAMS;
+        const v = { t: 0 };
+
+        gsap.to(v, {
+            t: 1,
+            duration: flashTime,
+            ease: 'power2.in',
+            onUpdate: () => this.scene.background.setRGB(v.t, v.t, v.t),
+            onComplete: () => { window.location.assign(url); },
+        });
+    }
+
     // 重置相機至原點
     _resetCamera() {
         this.camera.position.set(0, 0, 0);
@@ -2087,6 +2074,9 @@ class StarField {
                 if (e.key === PARAMS.menuKeyUp)   { setMenuFocus(this._menuFocusIdx - 1); e.preventDefault(); return; }
                 if (e.key === PARAMS.menuKeyDown) { setMenuFocus(this._menuFocusIdx + 1); e.preventDefault(); return; }
                 if (e.key === PARAMS.menuKeySelect) {
+                    // Enter 直接觸發白閃過場並跳轉（不依賴選單焦點）
+                    const url = this._lastHudData && this._lastHudData.url;
+                    if (url) { this._flashAndNavigate(url); return; }
                     const item = PARAMS.menuItems[this._menuFocusIdx];
                     if (item) this._onMenuAction(item.action);
                     return;
