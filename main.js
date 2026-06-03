@@ -37,8 +37,11 @@ function generateStarData(pos, labelIdx) {
     const raM   = Math.floor(rng() * 60);
     const decD  = Math.floor(rng() * 180) - 90;
     const decM  = Math.floor(rng() * 60);
+    const id = `STAR-${String(labelIdx + 1).padStart(3, '0')}`;
+    const url = PARAMS.starUrls[labelIdx] || (PARAMS.starUrlBase + id);
     return {
-        id:       `STAR-${String(labelIdx + 1).padStart(3, '0')}`,
+        id,
+        url,
         // 面板一：恆星分類
         type:     TYPES[ti] + Math.floor(rng() * 10) + 'V',
         dist:     (rng() * 890 + 10).toFixed(1) + ' ly',
@@ -76,10 +79,20 @@ const PANEL_DEFS = [
 
 // ─── 可公開調整的全域參數 ────────────────────────────────────────────────────
 const PARAMS = {
+    // 全域字型
+    fontFamily: "'Courier New', monospace",  // 所有 UI 使用的字型
+
+    // 星球名稱框（左上角白框）
+    starNameBoxX:      50,     // 距左邊緣距離 (px)
+    starNameBoxY:      250,     // 距上邊緣距離 (px)
+    starNameBoxWidth:  500,    // 框寬度 (px)
+    starNameSize:     48,     // 主標題字體大小 (px)
+
     // 星星場
-    starCount:        20000,   // 星星總數
+    starCount:        25000,   // 星星總數
     radius:           1500,    // 星球分布半徑
     driftSpeed:       0.012,  // 星星漂移速度
+    starSize:        1.6,      // 星星大小 (Three.js 單位，非像素)
 
     // 選項框（2D 標籤）
     labelCount:          5,      // 顯示幾個可點擊的星星標籤
@@ -112,13 +125,13 @@ const PARAMS = {
     // 運動模糊（Radial Blur）
     motionBlurEnabled:       true,  // 是否啟用運動模糊
     motionBlurFovThreshold:  0.4,   // FOV 達到 fovDefault→fovWarp 的幾成時開始模糊（0–1）
-    motionBlurMaxStrength:   0.08,  // 最大模糊強度（建議 0.02–0.15）
+    motionBlurMaxStrength:   0.115,  // 最大模糊強度（建議 0.02–0.15）
     motionBlurSamples:       16,    // 採樣數（越高越細緻但越耗效能，建議 8–32）
 
     // Bloom 光暈
-    bloomDefault:     1,   // 預設光暈強度
+    bloomDefault:     1.5,   // 預設光暈強度
     bloomPeak:        1,    // 抵達星星時最大光暈強度
-    bloomTime:        2.2,    // 光暈增強時間 (秒)
+    bloomTime:        2,    // 光暈增強時間 (秒)
 
     // 白閃過場
     flashTime:        1,    // 閃白持續時間 (秒)
@@ -164,18 +177,26 @@ const PARAMS = {
     menuItems: [
         { key: 'CLICK',  label: 'SELECT STAR',  action: 'fly'  },
         { key: 'ENTER',  label: 'SCAN DETAILS', action: 'scan' },
+        { key: '←',      label: 'PREV STAR',    action: 'prev' },
+        { key: '→',      label: 'NEXT STAR',    action: 'next' },
         { key: 'ESC',    label: 'RETURN',        action: 'back' },
     ],
-    menuFontSize:         28,     // 選單文字大小 (px)
-    menuLineHeight:       2.4,    // 行距倍數
+    menuFontSize:         22,     // 選單文字大小 (px)
+    menuLineHeight:       2.2,    // 行距倍數
     menuIndicatorWidth:   3,      // 游標指示條寬度 (px)
     menuX:                36,     // 選單距左邊緣距離 (px)
     menuY:                80,     // 選單垂直位置（百分比，50 = 垂直居中）
     menuFocusScale:       1.12,   // 聚焦項目的放大倍數
-    menuKeyUp:            'ArrowUp',   // 向上鍵
-    menuKeyDown:          'ArrowDown', // 向下鍵
-    menuKeySelect:        'Enter',     // 確認鍵
-    menuKeyBack:          'Escape',    // 返回鍵（也可觸發 Back 按鈕）
+    menuKeyUp:            'ArrowUp',    // 選單向上
+    menuKeyDown:          'ArrowDown',  // 選單向下
+    menuKeySelect:        'Enter',      // 確認鍵
+    menuKeyBack:          'Escape',     // 返回鍵
+    menuKeyPrev:          'ArrowLeft',  // 快速切換到上一顆標籤星球
+    menuKeyNext:          'ArrowRight', // 快速切換到下一顆標籤星球
+
+    // 星球切換動畫
+    jumpFadeTime:         0.2,    // HUD 淡出時間 (秒)
+    jumpHoldTime:         0.15,   // 淡出後等待時間 (秒，讓畫面清空再飛）
 
     // 返回動畫
     flyBackTime:          5,    // 返回飛行時間 (秒)
@@ -183,6 +204,14 @@ const PARAMS = {
     // 左側黑色暈邊
     vignetteWidth:        40,   // 暈邊寬度（佔螢幕百分比，0 = 關閉）
     vignetteOpacity:      1.0,  // 暈邊最大不透明度（0–1）
+
+    // 頁面狀態（只讀，由程式自動更新）
+    // 0 = 初始畫面（星星選擇），1 = 選擇畫面（HUD 開啟）
+    pageState: 0,
+
+    // 星球跳轉 URL（依 labelIdx 0~N-1 對應；空字串 = 不跳轉）
+    starUrlBase: '/star/',      // 自動生成時的 URL 前綴：starUrlBase + star_id（如 STAR-001）
+    starUrls: [],               // 可手動指定各星球 URL，優先於 starUrlBase；長度不足時 fallback 到 starUrlBase
 };
 
 // ─── 注入全域 CSS ────────────────────────────────────────────────────────────
@@ -203,6 +232,61 @@ style.textContent = `
     z-index: 1;
 }
 
+/* ── 左上角星球名稱框（Alien Isolation 風格） ── */
+#star-name-box {
+    position: fixed;
+    z-index: 10;
+    left: ${PARAMS.starNameBoxX}px;
+    top:  ${PARAMS.starNameBoxY}px;
+    width: ${PARAMS.starNameBoxWidth}px;
+    background: transparent;
+    padding: 0;
+    pointer-events: none;
+    display: none;
+}
+#star-name-box.visible { display: block; }
+
+/* 主標題：大字距、白色、粗體 */
+#star-name-box .star-name-id {
+    display: block;
+    font: 800 ${PARAMS.starNameSize}px/1 ${PARAMS.fontFamily};
+    color: rgba(255,255,255,0.95);
+    letter-spacing: 0.55em;
+    text-transform: uppercase;
+    text-shadow: 0 0 18px rgba(255,255,255,0.25);
+    margin-bottom: 0;
+}
+
+/* 副標題容器：相對定位，橫線穿字效果 */
+#star-name-box .star-name-type-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    margin-top: 6px;
+    height: 14px;
+}
+/* 貫穿全寬的水平橫線 */
+#star-name-box .star-name-type-wrap::before {
+    content: '';
+    position: absolute;
+    left: 0; right: 0;
+    top: 50%;
+    height: 1px;
+    background: rgba(255,255,255,0.35);
+}
+/* 副標題文字：背景遮住橫線，製造「線穿字母」視覺 */
+#star-name-box .star-name-type {
+    position: relative;
+    display: inline-block;
+    font: 600 11px/1 ${PARAMS.fontFamily};
+    color: rgba(255,255,255,0.55);
+    letter-spacing: 0.62em;
+    text-transform: uppercase;
+    /* 每個字母前後加小空隙，模擬 Alien Isolation 間距感 */
+    padding: 0 4px 0 0;
+    background: transparent;
+}
+
 /* 星星選項框 */
 .star-label {
     position: fixed;
@@ -212,7 +296,7 @@ style.textContent = `
     border: 5px solid rgba(255,255,255,${PARAMS.labelBorderAlpha});
     background: rgba(255,255,255,${PARAMS.labelBgAlpha});
     color: rgba(255,255,255,0.85);
-    font: 600 ${PARAMS.labelFontSize}px/1 'Courier New', monospace;
+    font: 600 ${PARAMS.labelFontSize}px/1 ${PARAMS.fontFamily};
     letter-spacing: 0.08em;
     padding: ${PARAMS.labelPaddingV}px ${PARAMS.labelPaddingH}px;
     border-radius: 500px;
@@ -236,6 +320,30 @@ style.textContent = `
     background: rgba(255,255,255,0.75);
     color: #000;
 }
+
+/* ── 星球中心聚焦動畫（固定在星球投影座標） ── */
+.star-reticle {
+    position: fixed;
+    z-index: 9;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    width: 28px; height: 28px;
+}
+.star-reticle .rc {
+    position: absolute;
+    width: 8px; height: 8px;
+    border-color: rgba(140,255,180,0.95);
+    border-style: solid;
+}
+.star-reticle .rc.tl { top: 0;    left: 0;  border-width: 2px 0 0 2px; animation: rcTL 2s ease-in-out infinite; }
+.star-reticle .rc.tr { top: 0;    right: 0; border-width: 2px 2px 0 0; animation: rcTR 2s ease-in-out infinite 0.2s; }
+.star-reticle .rc.bl { bottom: 0; left: 0;  border-width: 0 0 2px 2px; animation: rcBL 2s ease-in-out infinite 0.4s; }
+.star-reticle .rc.br { bottom: 0; right: 0; border-width: 0 2px 2px 0; animation: rcBR 2s ease-in-out infinite 0.6s; }
+
+@keyframes rcTL { 0%,100%{transform:translate(0,0);opacity:0.3} 50%{transform:translate(4px,4px);opacity:1} }
+@keyframes rcTR { 0%,100%{transform:translate(0,0);opacity:0.3} 50%{transform:translate(-4px,4px);opacity:1} }
+@keyframes rcBL { 0%,100%{transform:translate(0,0);opacity:0.3} 50%{transform:translate(4px,-4px);opacity:1} }
+@keyframes rcBR { 0%,100%{transform:translate(0,0);opacity:0.3} 50%{transform:translate(-4px,-4px);opacity:1} }
 
 /* ── 資訊面板容器（固定覆蓋全螢幕） ── */
 #star-hud {
@@ -294,7 +402,7 @@ style.textContent = `
     border: 1px solid rgba(120,210,255,${PARAMS.infoPanelBorderAlpha});
     background: rgba(5,12,30,${PARAMS.infoPanelBgAlpha});
     color: rgba(160,220,255,0.9);
-    font: ${PARAMS.infoPanelFontSize}px/1.6 'Courier New', monospace;
+    font: ${PARAMS.infoPanelFontSize}px/1.6 ${PARAMS.fontFamily};
     letter-spacing: 0.06em;
     backdrop-filter: blur(4px);
     overflow: hidden;
@@ -355,7 +463,7 @@ style.textContent = `
 .continue-btn {
     all: unset;
     cursor: pointer;
-    font: 600 10px/1 'Courier New', monospace;
+    font: 600 10px/1 ${PARAMS.fontFamily};
     letter-spacing: 0.18em;
     color: rgba(120,210,255,0.8);
     padding: 5px 14px;
@@ -365,6 +473,19 @@ style.textContent = `
 .continue-btn:hover {
     background: rgba(120,210,255,0.15);
     color: #fff;
+}
+
+/* ── 選單星球名稱標題 ── */
+#menu-star-name {
+    font: 700 11px/1 ${PARAMS.fontFamily};
+    letter-spacing: 0.22em;
+    color: rgba(120,210,255,0.7);
+    margin-bottom: 14px;
+    padding-left: ${PARAMS.menuIndicatorWidth + 14}px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 240px;
 }
 
 /* ── 左側控制選單 ── */
@@ -403,13 +524,13 @@ style.textContent = `
 }
 .ctrl-item.active .ctrl-indicator { opacity: 1; }
 .ctrl-key {
-    font: 700 ${PARAMS.menuFontSize * 0.65}px/1 'Courier New', monospace;
+    font: 700 ${PARAMS.menuFontSize * 0.65}px/1 ${PARAMS.fontFamily};
     letter-spacing: 0.12em;
     color: rgba(255,255,255,0.4);
     min-width: 46px;
 }
 .ctrl-label {
-    font: 400 ${PARAMS.menuFontSize}px/${PARAMS.menuLineHeight} 'Courier New', monospace;
+    font: 400 ${PARAMS.menuFontSize}px/${PARAMS.menuLineHeight} ${PARAMS.fontFamily};
     letter-spacing: 0.06em;
     color: rgba(255,255,255,0.9);
     white-space: nowrap;
@@ -426,7 +547,7 @@ style.textContent = `
     align-items: center;
     gap: 10px;
     cursor: pointer;
-    font: 600 13px/1 'Courier New', monospace;
+    font: 600 13px/1 ${PARAMS.fontFamily};
     letter-spacing: 0.18em;
     color: rgba(255,255,255,0.75);
     transition: color 0.15s;
@@ -451,8 +572,9 @@ class StarField {
         this._busy          = false; // 動畫進行中旗標（防止重複觸發）
         this._labelsVisible = true;  // 選項框是否顯示中
         this._lastTarget    = null;  // 最後飛向的目標位置（供返回使用）
-        this._orbiting      = false; // 是否正在繞星球軌道運行
-        this._orbitAngle    = 0;     // 當前軌道角度（弧度）
+        this._orbiting         = false; // 是否正在繞星球軌道運行
+        this._orbitAngle       = 0;     // 當前軌道角度（弧度）
+        this._currentLabelIdx  = -1;    // 目前飛向的標籤索引（-1 = 非標籤星星）
 
         this._initRenderer();
         this._initMotionBlur(); // 運動模糊 Pass（需在 renderer 初始化後）
@@ -668,6 +790,13 @@ class StarField {
 
     // ─── 左側控制選單 ────────────────────────────────────────────────────────
     _initMenu() {
+        // 左上角星球名稱框（白框）
+        const nameBox = document.createElement('div');
+        nameBox.id = 'star-name-box';
+        nameBox.innerHTML = `<span class="star-name-id"></span><span class="star-name-type-wrap"><span class="star-name-type"></span></span>`;
+        document.body.appendChild(nameBox);
+        this._menuStarName = nameBox;
+
         const menu = document.createElement('div');
         menu.id = 'ctrl-menu';
         document.body.appendChild(menu);
@@ -699,11 +828,19 @@ class StarField {
             this._closeHUD();
             return;
         }
+        if (action === 'scan') {
+            const url = this._lastHudData && this._lastHudData.url;
+            if (url) window.location.href = url;
+            return;
+        }
+        if (action === 'next') { this._jumpToLabel(+1); return; }
+        if (action === 'prev') { this._jumpToLabel(-1); return; }
         // 其他自訂行為可在此擴充
     }
 
     _showMenu() {
         this._menu.classList.add('visible');
+        this._menuStarName.classList.add('visible');
         gsap.fromTo(this._menu, { opacity: 0, x: -20 }, { opacity: 1, x: 0, duration: 0.5, ease: 'power2.out' });
         // 顯示時焦點重設到第一項
         this._menuFocusIdx = 0;
@@ -718,6 +855,10 @@ class StarField {
         gsap.to(this._menu, {
             opacity: 0, x: -20, duration: 0.3,
             onComplete: () => this._menu.classList.remove('visible')
+        });
+        gsap.to(this._menuStarName, {
+            opacity: 0, duration: 0.3,
+            onComplete: () => { this._menuStarName.classList.remove('visible'); this._menuStarName.style.opacity = ''; }
         });
         // 暈邊與選單同步淡出
         if (this._vignette) gsap.to(this._vignette, { opacity: 0, duration: 0.3 });
@@ -745,6 +886,58 @@ class StarField {
         });
     }
 
+    // ─── 快速切換到下一顆 / 上一顆標籤星球 ─────────────────────────────────
+    // dir: +1 = 下一顆，-1 = 上一顆
+    _jumpToLabel(dir) {
+        // 只允許在軌道狀態或初始狀態觸發，飛行中禁止
+        if (this._busy && !this._orbiting) return;
+
+        const count = this._labels.length;
+        if (count === 0) return;
+
+        // 計算目標標籤索引（循環）
+        const nextIdx = this._currentLabelIdx < 0
+            ? (dir > 0 ? 0 : count - 1)
+            : ((this._currentLabelIdx + dir + count) % count);
+
+        const label  = this._labels[nextIdx];
+        const attr   = this.stars.geometry.getAttribute('position');
+        const target = new THREE.Vector3(
+            attr.getX(label.idx), attr.getY(label.idx), attr.getZ(label.idx)
+        );
+
+        // 記錄新的目標索引
+        this._currentLabelIdx = nextIdx;
+
+        // ── 若正在軌道中，先淡出 HUD 再跳轉 ──────────────────────────────
+        if (this._orbiting) {
+            this._orbiting = false;
+            this._busy     = true; // 鎖定，防止點擊穿透
+
+            // 淡出 HUD / 選單 / 返回鍵
+            gsap.to(this._hud, {
+                opacity: 0,
+                duration: PARAMS.jumpFadeTime,
+                onComplete: () => {
+                    this._hud.classList.remove('visible');
+                    this._hideMenu();
+                    this._hideBackBtn();
+                    // 同步隱藏舊星球與本地星場，避免 _flyTo 瞬間傳送 mesh 產生閃爍
+                    //this._hidePlanet();
+                    this._hideLocalStars();
+                    // 短暫停頓後起飛，讓畫面清空再開始 warp 動畫
+                    gsap.delayedCall(PARAMS.jumpHoldTime, () => {
+                        this._busy = false;
+                        this._flyTo(target, label.data);
+                    });
+                },
+            });
+        } else {
+            // 初始畫面直接飛
+            this._flyTo(target, label.data);
+        }
+    }
+
     // ─── 反轉動畫：飛回原點 ─────────────────────────────────────────────────
     _flyBack() {
         if (!this._lastTarget) return;
@@ -757,73 +950,107 @@ class StarField {
 
         const { bloomDefault, flyBackTime, fovDefault, fovWarp, fovPeakRatio } = PARAMS;
 
-        // 捕捉當前相機實際朝向（可能帶 cameraLookOffsetX 偏移），作為 lerp 起點避免跳動
         const currentDir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
         const target     = this._lastTarget.clone();
         const forwardDir = new THREE.Vector3(0, 0, -1);
-
-        // Phase 1 (0 → pivotRatio)：從當前朝向平滑轉到「看向目標」
-        // Phase 2 (pivotRatio → 1)：從「看向目標」平滑轉到「看向正前方」
+        const origin     = new THREE.Vector3(0, 0, 0);
+        const camPos     = this.camera.position.clone();
         const pivotRatio = fovPeakRatio;
+
+        // ── 偵測直線路徑是否穿過星球 ──────────────────────────────────────────
+        // 射線：P(t) = camPos + t*(origin-camPos)，t∈[0,1]
+        // 球體：center=target，radius=planetRadius+1（含緩衝）
+        const safeR  = PARAMS.planetRadius + 1;
+        const d      = origin.clone().sub(camPos);
+        const f      = camPos.clone().sub(target);
+        const a      = d.dot(d);
+        const b      = 2 * f.dot(d);
+        const c      = f.dot(f) - safeR * safeR;
+        const disc   = b * b - 4 * a * c;
+        const hitsPlanet = disc >= 0 && (() => {
+            const t1 = (-b - Math.sqrt(disc)) / (2 * a);
+            const t2 = (-b + Math.sqrt(disc)) / (2 * a);
+            return (t1 >= 0 && t1 <= 1) || (t2 >= 0 && t2 <= 1);
+        })();
+
+        // ── 若會穿越，計算側面繞行點（垂直於 target→origin 軸）──────────────
+        let detourPos = null;
+        if (hitsPlanet) {
+            const toOrigin = origin.clone().sub(target).normalize();
+            // 選與 toOrigin 不平行的輔助向量做 cross product 求切面向量
+            const aux  = Math.abs(toOrigin.y) < 0.9
+                ? new THREE.Vector3(0, 1, 0)
+                : new THREE.Vector3(1, 0, 0);
+            const side = new THREE.Vector3().crossVectors(toOrigin, aux).normalize();
+            // 繞行點：星球旁側，已在 origin 方向清出路徑
+            detourPos = target.clone()
+                .addScaledVector(toOrigin, safeR * 1.5)
+                .addScaledVector(side,     safeR * 2.5);
+        }
 
         const lookProg = { t: 0 };
 
         const tl = gsap.timeline({
             onComplete: () => {
+                PARAMS.pageState = 0;
                 this._resetCamera();
-                this._hidePlanet();          // 動畫結束後才隱藏星球
-                this._hideLocalStars();      // 動畫結束後才隱藏目標星場
+                this._hidePlanet();
+                this._hideLocalStars();
                 this._busy = false;
                 this._showLabels();
             }
         });
 
-        // ── 相機位置：飛回原點，lookAt 全程平滑驅動 ──
+        // ── 若有繞行點，先快速移到繞行點（佔 25% 時間），再飛回原點（75%）──
+        const phase1 = detourPos ? flyBackTime * 0.25 : 0;
+        const phase2 = flyBackTime - phase1;
+
+        if (detourPos) {
+            tl.to(this.camera.position, {
+                x: detourPos.x, y: detourPos.y, z: detourPos.z,
+                duration: phase1,
+                ease: 'power2.out',
+                onUpdate: () => {
+                    // 持續看向星球，讓繞行看起來自然
+                    this.camera.lookAt(target);
+                },
+            }, 0);
+        }
+
+        // ── 主要飛回段：相機位置→原點，lookAt 全程平滑驅動 ──
+        const startPos = detourPos || camPos;
         tl.to(this.camera.position, {
             x: 0, y: 0, z: 0,
-            duration: flyBackTime,
+            duration: phase2,
             ease: 'power2.inOut',
             onUpdate: () => {
                 const t        = lookProg.t;
                 const toTarget = target.clone().sub(this.camera.position).normalize();
-
                 let dir;
                 if (t < pivotRatio) {
-                    // Phase 1：currentDir → toTarget（消除起始跳動）
                     const localT = t / pivotRatio;
                     dir = new THREE.Vector3().lerpVectors(currentDir, toTarget, localT).normalize();
                 } else {
-                    // Phase 2：toTarget → forwardDir（轉回正前方）
                     const localT = (t - pivotRatio) / (1 - pivotRatio);
                     dir = new THREE.Vector3().lerpVectors(toTarget, forwardDir, localT).normalize();
                 }
                 this.camera.lookAt(this.camera.position.clone().add(dir));
             },
-        }, 0);
+        }, phase1);
 
-        // lookProg 與位置同步
-        tl.to(lookProg, { t: 1, duration: flyBackTime, ease: 'power2.inOut' }, 0);
+        tl.to(lookProg, { t: 1, duration: phase2, ease: 'power2.inOut' }, phase1);
 
-        // ── Bloom 鐘形（與 FOV 同步，返回時先升後回到預設）──
+        // ── FOV 鐘形（以主要飛回段為基準）──
         {
             const { fovHoldRatio } = PARAMS;
-            const expandEnd     = flyBackTime * (fovPeakRatio - fovHoldRatio / 2);
-            const contractStart = flyBackTime * (fovPeakRatio + fovHoldRatio / 2);
-            tl.to(this.bloom, { strength: bloomPeak, duration: expandEnd, ease: 'power2.in' }, 0);
-            tl.to(this.bloom, { strength: bloomDefault, duration: flyBackTime - contractStart, ease: 'power2.out' }, contractStart);
-        }
-
-        // ── FOV 鐘形（含 hold 停留，與 _flyTo 使用相同邏輯）──
-        {
-            const { fovHoldRatio } = PARAMS;
-            const expandEnd     = flyBackTime * (fovPeakRatio - fovHoldRatio / 2);
-            const contractStart = flyBackTime * (fovPeakRatio + fovHoldRatio / 2);
+            const expandEnd     = phase1 + phase2 * (fovPeakRatio - fovHoldRatio / 2);
+            const contractStart = phase1 + phase2 * (fovPeakRatio + fovHoldRatio / 2);
             tl.to(this.camera, {
                 fov: fovWarp,
-                duration: expandEnd,
+                duration: expandEnd - phase1,
                 ease: 'power2.in',
                 onUpdate: () => this.camera.updateProjectionMatrix(),
-            }, 0);
+            }, phase1);
             tl.to(this.camera, {
                 fov: fovDefault,
                 duration: flyBackTime - contractStart,
@@ -831,6 +1058,25 @@ class StarField {
                 onUpdate: () => this.camera.updateProjectionMatrix(),
             }, contractStart);
         }
+
+        // ── Bloom 增強 ──
+        tl.to(this.bloom, { strength: bloomPeak, duration: flyBackTime * 0.4, ease: 'power2.in' }, phase1);
+    }
+
+    // ─── 在視椎內生成一個隨機星星位置 ─────────────────────────────────────────
+    // halfAngleRad：視椎半角（弧度）；R：最大半徑；forwardZ：-1（朝 -Z）
+    _randomStarInFrustum(halfAngleRad, R) {
+        // 在以 -Z 為中心軸的錐體內均勻取方向
+        const cosMax = Math.cos(halfAngleRad);
+        const cosT   = 1 - Math.random() * (1 - cosMax); // cosθ ∈ [cosMax, 1]
+        const sinT   = Math.sqrt(1 - cosT * cosT);
+        const phi    = Math.random() * Math.PI * 2;
+        const r      = R * Math.cbrt(Math.random());
+        return {
+            x:  r * sinT * Math.cos(phi),
+            y:  r * sinT * Math.sin(phi),
+            z: -r * cosT,                  // 負 Z = 相機正前方
+        };
     }
 
     // ─── 建立星星點雲 ────────────────────────────────────────────────────────
@@ -841,18 +1087,17 @@ class StarField {
         const col   = new Float32Array(count * 3);
         this._vel   = new Float32Array(count * 3); // 每顆星星的漂移速度
 
+        // 視椎半角：以 FOV 的 1.4 倍確保邊緣星星夠多，含寬螢幕水平延伸
+        const frustumHalf = THREE.MathUtils.degToRad(PARAMS.fovDefault * 1.4);
+
         const color = new THREE.Color();
 
         for (let i = 0; i < count; i++) {
-            // 球體均勻分布（cbrt 確保體積密度均勻）
-            const r    = R * Math.cbrt(Math.random());
-            const cosT = Math.random() * 2 - 1;
-            const sinT = Math.sqrt(1 - cosT * cosT);
-            const phi  = Math.random() * Math.PI * 2;
-
-            pos[i*3]   = r * sinT * Math.cos(phi);
-            pos[i*3+1] = r * sinT * Math.sin(phi);
-            pos[i*3+2] = r * cosT;
+            // 在相機視椎錐體內均勻分布（取代原本的全球體分布）
+            const { x, y, z } = this._randomStarInFrustum(frustumHalf, R);
+            pos[i*3]   = x;
+            pos[i*3+1] = y;
+            pos[i*3+2] = z;
 
             // 顏色：75% 藍白色（類太陽型），25% 暖黃色
             const warm = Math.random() < 0.25;
@@ -932,7 +1177,7 @@ class StarField {
         this.starsNear = new THREE.Points(geo, new THREE.PointsMaterial({
             map: makeStarTexture(),
             vertexColors: true,
-            size: 1.4,
+            size: PARAMS.starSize,
             sizeAttenuation: true,
             transparent: true,
             alphaTest: 0.01,
@@ -972,10 +1217,16 @@ class StarField {
 
             const el = document.createElement('div');
             el.className = 'star-label';
-            el.textContent = data.id;
+            el.innerHTML = `<span class="star-label-text">${data.id}</span>`;
             document.body.appendChild(el);
 
-            return { idx, data, el, wasInView: true };
+            // 聚焦動畫：獨立元素，定位於星球投影座標中心
+            const reticle = document.createElement('div');
+            reticle.className = 'star-reticle';
+            reticle.innerHTML = `<div class="rc tl"></div><div class="rc tr"></div><div class="rc bl"></div><div class="rc br"></div>`;
+            document.body.appendChild(reticle);
+
+            return { idx, data, el, reticle, wasInView: true };
         });
 
         this._labelsVisible = true;
@@ -984,19 +1235,25 @@ class StarField {
     // 淡入顯示所有標籤
     _showLabels() {
         this._labelsVisible = true;
-        this._labels.forEach(({ el }) => {
+        this._labels.forEach(({ el, reticle }) => {
             el.style.display = '';
-            gsap.fromTo(el, { opacity: 0 }, { opacity: 1, duration: 0.5 });
+            reticle.style.display = '';
+            gsap.fromTo(el,      { opacity: 0 }, { opacity: 1, duration: 0.5 });
+            gsap.fromTo(reticle, { opacity: 0 }, { opacity: 1, duration: 0.5 });
         });
     }
 
     // 淡出隱藏所有標籤
     _hideLabels() {
         this._labelsVisible = false;
-        this._labels.forEach(({ el }) => {
+        this._labels.forEach(({ el, reticle }) => {
             gsap.to(el, {
                 opacity: 0, duration: 0.25,
                 onComplete: () => { el.style.display = 'none'; }
+            });
+            gsap.to(reticle, {
+                opacity: 0, duration: 0.25,
+                onComplete: () => { reticle.style.display = 'none'; }
             });
         });
     }
@@ -1045,17 +1302,26 @@ class StarField {
                         label.data = generateStarData(
                             new THREE.Vector3(attr.getX(newIdx), attr.getY(newIdx), attr.getZ(newIdx)), i
                         );
-                        label.el.textContent = label.data.id;
+                        label.el.querySelector('.star-label-text').textContent = label.data.id;
                     }
                 }
-                label.el.style.visibility = 'hidden';
+                label.el.style.visibility      = 'hidden';
+                label.reticle.style.visibility = 'hidden';
                 return;
             }
 
-            label.wasInView          = true;
-            label.el.style.visibility = '';
-            label.el.style.left      = `${(ndc.x *  0.5 + 0.5) * window.innerWidth}px`;
-            label.el.style.top       = `${(ndc.y * -0.5 + 0.5) * window.innerHeight}px`;
+            const sx = (ndc.x *  0.5 + 0.5) * window.innerWidth;
+            const sy = (ndc.y * -0.5 + 0.5) * window.innerHeight;
+
+            label.wasInView                = true;
+            label.el.style.visibility      = '';
+            label.el.style.left            = `${sx}px`;
+            label.el.style.top             = `${sy}px`;
+
+            // 聚焦動畫居中在星球投影點
+            label.reticle.style.visibility = '';
+            label.reticle.style.left       = `${sx}px`;
+            label.reticle.style.top        = `${sy}px`;
         });
     }
 
@@ -1128,6 +1394,13 @@ class StarField {
         gsap.fromTo(this._hud, { opacity: 0 }, { opacity: 1, duration: PARAMS.infoPanelFadeIn });
         this._showMenu();
         this._showBackBtn();
+
+        // 更新選單左上角星球名稱
+        if (this._menuStarName) {
+            this._menuStarName.querySelector('.star-name-id').textContent   = data.id;
+            this._menuStarName.querySelector('.star-name-type').textContent = data.type || '';
+            gsap.fromTo(this._menuStarName, { opacity: 0 }, { opacity: 1, duration: 0.4, delay: 0.1 });
+        }
 
         this._openHUDLayout(target, data);
     }
@@ -1231,6 +1504,7 @@ class StarField {
     // ─── 相機飛行至目標星星 ──────────────────────────────────────────────────
     _flyTo(target, data = null) {
         this._busy = true;
+        PARAMS.pageState = 1;
         this._lastTarget = target.clone(); // 儲存目標供返回動畫使用
         this._hideLabels();
 
@@ -1344,6 +1618,7 @@ class StarField {
             ease: 'power1.inOut',
             onUpdate: () => this.scene.background.setRGB(v.t, v.t, v.t),
             onComplete: () => {
+                PARAMS.pageState = 0;
                 this.bloom.strength = bloomDefault;
                 this.scene.background = new THREE.Color(0x000000);
                 this._resetCamera();
@@ -1366,10 +1641,11 @@ class StarField {
     _bindEvents() {
         // 點擊選項框 → 飛向對應星星
         // 透過 label 物件參照讀取 idx/data，確保重選後仍能取到最新值
-        this._labels.forEach((label) => {
+        this._labels.forEach((label, li) => {
             label.el.addEventListener('click', (e) => {
                 e.stopPropagation(); // 防止觸發背景點擊
                 if (this._busy) return;
+                this._currentLabelIdx = li;
                 const attr = this.stars.geometry.getAttribute('position');
                 const target = new THREE.Vector3(
                     attr.getX(label.idx), attr.getY(label.idx), attr.getZ(label.idx)
@@ -1416,6 +1692,10 @@ class StarField {
                 }
             }
 
+            // 左右箭頭：快速切換上/下一顆標籤星球（軌道中或初始畫面均可）
+            if (e.key === PARAMS.menuKeyNext) { this._jumpToLabel(+1); e.preventDefault(); return; }
+            if (e.key === PARAMS.menuKeyPrev) { this._jumpToLabel(-1); e.preventDefault(); return; }
+
             // Escape / menuKeyBack：隨時可觸發返回（選單顯示時或飛行中）
             if (e.key === PARAMS.menuKeyBack) {
                 if (this._orbiting) this._flyBack();
@@ -1426,8 +1706,10 @@ class StarField {
 
     // ─── 主渲染迴圈 ──────────────────────────────────────────────────────────
     _tick() {
-        const attr = this.stars.geometry.getAttribute('position');
-        const R2   = (PARAMS.radius * 1.4) ** 2;
+        const attr         = this.stars.geometry.getAttribute('position');
+        const R            = PARAMS.radius;
+        const R2           = (R * 1.4) ** 2;
+        const frustumHalf  = THREE.MathUtils.degToRad(PARAMS.fovDefault * 1.4);
 
         const loop = () => {
             requestAnimationFrame(loop);
@@ -1442,10 +1724,15 @@ class StarField {
                     const x = attr.array[i*3];
                     const y = attr.array[i*3+1];
                     const z = attr.array[i*3+2];
-                    if (x*x + y*y + z*z > R2) {
-                        attr.array[i*3]   = -x * 0.9;
-                        attr.array[i*3+1] = -y * 0.9;
-                        attr.array[i*3+2] = -z * 0.9;
+                    // 超出視椎錐體範圍（半徑或角度）時重新在錐體內生成
+                    const r2 = x*x + y*y + z*z;
+                    const outOfRange  = r2 > R2;
+                    const outOfFrustum = z > 0 || (r2 > 1 && Math.acos(Math.max(-1, -z / Math.sqrt(r2))) > frustumHalf);
+                    if (outOfRange || outOfFrustum) {
+                        const p = this._randomStarInFrustum(frustumHalf, R);
+                        attr.array[i*3]   = p.x;
+                        attr.array[i*3+1] = p.y;
+                        attr.array[i*3+2] = p.z;
                     }
                 }
                 attr.needsUpdate = true;

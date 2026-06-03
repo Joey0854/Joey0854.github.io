@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem E:\\\\Web\\\\Projects\\\\pymone.io -File | Where-Object { $_.Extension -ne '' } | Select-Object Name)"
+    ]
+  }
+}
