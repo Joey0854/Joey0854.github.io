@@ -82,8 +82,7 @@ const PARAMS = {
     // ── 星雲背景（Shadertoy GLSL 入口） ──────────────────────────────────────
     nebulaEnabled:    true,   // 是否顯示星雲
     nebulaOpacity:    1.0,    // 整體不透明度（0–1）
-    nebulaRadius:     1400,   // 星雲球體半徑（建議略小於 radius 1500）
-    nebulaBrightness: 0.0124,   // 星雲亮度（建議 0.005–0.015）
+    nebulaBrightness: 0.0124, // 星雲亮度（建議 0.005–0.015）
 
     // 全域字型
     fontFamily: "'Courier New', monospace",  // 所有 UI 使用的字型
@@ -108,7 +107,8 @@ const PARAMS = {
     starBrightness:   2,
     starFadeRadius:   500,     // 超過此距離開始淡出 (world units)
     starFadeRange:    200,     // 淡出漸層寬度：fadeRadius → fadeRadius+fadeRange 之間從 1 降到 0
-    starSize:        1.6,      // 星星大小 (Three.js 單位，非像素)
+    starSize:        1.6,      // 本地星場星星大小 (Three.js 單位，非像素)
+    starSizeFar:     1.4,      // 遠景星場星星大小 (Three.js 單位)
 
     // 選項框（2D 標籤）
     labelCount:          5,      // 顯示幾個可點擊的星星標籤
@@ -162,14 +162,16 @@ const PARAMS = {
     infoPanelBgAlpha:     0.82,   // 面板背景透明度
     infoPanelBorderAlpha: 0.5,    // 面板邊框透明度
     infoPanelFadeIn:      0.6,    // 淡入時間 (秒)
+    infoPanelHeaderH:     30,     // 面板標題列高度 (px，須與 CSS .panel-header 一致)
+    infoPanelRowH:        22,     // 面板每列資料高度 (px，須與 CSS .data-row 一致)
 
     // 資訊面板位置（視窗絕對百分比，與星球螢幕位置無關）
     infoPanelAnchorX:     70,    // 面板左緣絕對位置 (% of innerWidth)
-    infoPanelGlobalOffsetY: 0,   // 所有面板整體垂直偏移，疊加在星球 Y 上 (% of innerHeight)
+    infoPanelGlobalOffsetY: -4.75,   // 所有面板整體垂直偏移，疊加在星球 Y 上 (% of innerHeight)
 
     // 心智圖連線
     mindMapBranchX:       60,                       // 分支點相對星球 X 的水平偏移 (% of innerWidth，正值=向右)
-    mindMapLineColor:     'rgba(255,255,255,0.8)', // 連線顏色
+    mindMapLineColor:     'rgba(140,225,255,0.9)', // 連線顏色（主線）
     mindMapLineWidth:     2,                        // 連線粗細 (px)
     mindMapStartOffsetX:  43,     // 連線起點相對星球的水平偏移 (% of innerWidth)
     mindMapStartOffsetY:  50,     // 連線起點相對星球的垂直偏移 (% of innerHeight)
@@ -510,65 +512,172 @@ style.textContent = `
 @keyframes spinCCW { to { transform: rotate(-360deg); } }
 
 /* ── 資訊面板 ── */
+/* ── 資訊面板（戰術判讀 HUD 風） ── */
 .info-panel {
     position: absolute;
     pointer-events: auto;
     width: ${PARAMS.infoPanelWidth}px;
-    border: 1px solid rgba(120,210,255,${PARAMS.infoPanelBorderAlpha});
-    background: rgba(5,12,30,${PARAMS.infoPanelBgAlpha});
+    background: linear-gradient(180deg, rgba(8,16,34,${PARAMS.infoPanelBgAlpha}) 0%, rgba(4,9,22,${Math.max(0, PARAMS.infoPanelBgAlpha - 0.06)}) 100%);
     color: rgba(160,220,255,0.9);
     font: ${PARAMS.infoPanelFontSize}px/1.6 ${PARAMS.fontFamily};
     letter-spacing: 0.06em;
-    backdrop-filter: blur(4px);
+    backdrop-filter: blur(6px);
     overflow: hidden;
+    border-left: 2px solid rgba(120,210,255,0.85);  /* 左側索引強調條 */
+    box-shadow:
+        0 0 0 1px rgba(120,210,255,${PARAMS.infoPanelBorderAlpha * 0.55}) inset,
+        0 0 24px rgba(40,120,220,0.18),
+        0 8px 30px rgba(0,0,0,0.45);
 }
-/* 角標裝飾 */
-.info-panel::before, .info-panel::after {
-    content: '';
+/* 四角括號 */
+.info-panel .pc {
     position: absolute;
-    width: 8px; height: 8px;
-    border-color: rgba(120,210,255,0.9);
+    width: 12px; height: 12px;
+    border-color: rgba(140,225,255,0.95);
     border-style: solid;
+    pointer-events: none;
+    z-index: 2;
 }
-.info-panel::before { top: -1px; left: -1px;  border-width: 2px 0 0 2px; }
-.info-panel::after  { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; }
+.info-panel .pc.tl { top: 3px;    left: 3px;  border-width: 1px 0 0 1px; }
+.info-panel .pc.tr { top: 3px;    right: 3px; border-width: 1px 1px 0 0; }
+.info-panel .pc.bl { bottom: 3px; left: 3px;  border-width: 0 0 1px 1px; }
+.info-panel .pc.br { bottom: 3px; right: 3px; border-width: 0 1px 1px 0; }
 
 .panel-header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    padding: 7px 10px;
-    border-bottom: 1px solid rgba(120,210,255,0.25);
+    gap: 8px;
+    height: ${PARAMS.infoPanelHeaderH}px;
+    padding: 0 12px;
+    border-bottom: 1px solid rgba(120,210,255,0.22);
+    background: rgba(120,210,255,0.05);
     font-size: 10px;
+    position: relative;
+    z-index: 1;
 }
-.panel-title { opacity: 0.55; letter-spacing: 0.15em; }
-.panel-id    { color: #fff; font-weight: 700; }
+/* 閃爍狀態燈 */
+.panel-status {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: rgba(140,255,180,0.95);
+    box-shadow: 0 0 6px rgba(140,255,180,0.9);
+    flex-shrink: 0;
+    animation: statusBlink 1.6s ease-in-out infinite;
+}
+@keyframes statusBlink { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+.panel-title { opacity: 0.6; letter-spacing: 0.22em; text-transform: uppercase; }
+.panel-id {
+    margin-left: auto;
+    color: #fff; font-weight: 700; letter-spacing: 0.1em;
+    text-shadow: 0 0 8px rgba(120,210,255,0.6);
+}
 
 /* 掃描線動畫 */
 .scan-line {
     position: absolute;
     left: 0; right: 0;
-    height: 2px;
-    background: linear-gradient(transparent, rgba(120,210,255,0.35), transparent);
-    animation: scan 3s ease-in-out infinite;
+    height: 40px;
+    background: linear-gradient(transparent, rgba(120,210,255,0.10), rgba(120,210,255,0.22), transparent);
+    animation: scan 3.4s ease-in-out infinite;
     pointer-events: none;
+    z-index: 0;
 }
 @keyframes scan {
-    0%   { top: 0;    opacity: 0; }
-    10%  { opacity: 1; }
-    90%  { opacity: 1; }
-    100% { top: 100%; opacity: 0; }
+    0%   { top: -40px; opacity: 0; }
+    12%  { opacity: 1; }
+    88%  { opacity: 1; }
+    100% { top: 100%;  opacity: 0; }
 }
 
-.panel-body { padding: 8px 10px; }
+.panel-body { padding: 6px 12px; position: relative; z-index: 1; }
 .data-row {
     display: flex;
+    align-items: baseline;
     justify-content: space-between;
-    padding: 2px 0;
-    border-bottom: 1px solid rgba(120,210,255,0.1);
+    gap: 8px;
+    height: ${PARAMS.infoPanelRowH}px;
 }
-.data-row .key { opacity: 0.5; font-size: 10px; letter-spacing: 0.12em; }
-.data-row .val { color: #fff; font-weight: 600; font-size: 11px; }
+.data-row + .data-row { border-top: 1px solid rgba(120,210,255,0.08); }
+.data-row .key {
+    opacity: 0.5; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    flex-shrink: 0;
+}
+/* key 與 val 間的點狀引導線 */
+.data-row .lead {
+    flex: 1;
+    align-self: center;
+    height: 1px;
+    background-image: radial-gradient(circle, rgba(120,210,255,0.45) 0.5px, transparent 0.6px);
+    background-size: 5px 1px;
+    background-repeat: repeat-x;
+    opacity: 0.55;
+}
+.data-row .val {
+    color: #fff; font-weight: 600; font-size: 12px; letter-spacing: 0.04em;
+    text-shadow: 0 0 6px rgba(120,210,255,0.45);
+    flex-shrink: 0;
+}
+
+/* 底部訊號狀態列 */
+.panel-footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px;
+    border-top: 1px solid rgba(120,210,255,0.18);
+    background: rgba(120,210,255,0.04);
+    font: 700 8px/1 ${PARAMS.fontFamily};
+    letter-spacing: 0.16em;
+    color: rgba(120,210,255,0.55);
+    text-transform: uppercase;
+    position: relative;
+    z-index: 1;
+}
+.pf-bar { flex: 1; height: 3px; background: rgba(120,210,255,0.12); overflow: hidden; }
+.pf-bar i {
+    display: block; height: 100%; width: 40%;
+    background: linear-gradient(90deg, transparent, rgba(140,225,255,0.9), transparent);
+    animation: pfScan 2.2s linear infinite;
+}
+@keyframes pfScan { 0% { transform: translateX(-100%); } 100% { transform: translateX(350%); } }
+.pf-val { color: rgba(140,255,180,0.85); }
+
+/* ── 心智圖連線（戰術匯流排）── */
+.mm-glow {
+    fill: none;
+    stroke: rgba(120,210,255,0.16);
+    stroke-width: ${PARAMS.mindMapLineWidth + 5};
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.mm-line {
+    fill: none;
+    stroke: ${PARAMS.mindMapLineColor};
+    stroke-width: ${PARAMS.mindMapLineWidth};
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    filter: drop-shadow(0 0 3px rgba(120,210,255,0.7));
+}
+/* 流動資料封包 */
+.mm-flow {
+    fill: none;
+    stroke: rgba(225,247,255,0.95);
+    stroke-width: ${PARAMS.mindMapLineWidth};
+    stroke-linecap: round;
+    stroke-dasharray: 5 16;
+    animation: mmFlow 0.9s linear infinite;
+}
+@keyframes mmFlow { to { stroke-dashoffset: -21; } }
+/* 起點環形節點（星球側） */
+.mm-origin    { fill: none; stroke: rgba(140,225,255,0.85); stroke-width: 1.5; animation: mmPulse 1.8s ease-in-out infinite; }
+.mm-node-core { fill: rgba(140,225,255,0.95); }
+@keyframes mmPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+/* 面板側菱形端點 */
+.mm-node {
+    fill: rgba(10,20,40,0.9);
+    stroke: rgba(140,225,255,0.95);
+    stroke-width: 1.5;
+}
 
 
 /* ── 選單星球名稱標題 ── */
@@ -671,6 +780,11 @@ class StarField {
         this._orbiting         = false; // 是否正在繞星球軌道運行
         this._orbitAngle       = 0;     // 當前軌道角度（弧度）
         this._currentLabelIdx  = -1;    // 目前飛向的標籤索引（-1 = 非標籤星星）
+        this._transitioning    = false; // 過場中（白閃/過曝），暫停每幀覆寫星雲透明度
+
+        // render loop 可重用的暫存向量（避免每幀配置）
+        this._tmpTangent  = new THREE.Vector3();
+        this._tmpLookAt   = new THREE.Vector3();
 
         this._initRenderer();
         this._initNebula();
@@ -687,6 +801,7 @@ class StarField {
         this._tick();
     }
 
+    // ═══════════════════════════ 初始化與渲染 ════════════════════════════════
     // ─── 根據目前視窗寬度更新 CSS 響應式變數 ─────────────────────────────────
     _updateResponsiveCSS() {
         const scale = window.innerWidth / 1920;
@@ -742,6 +857,10 @@ class StarField {
             for (const mat of [this._starMat, this._starNearMat]) {
                 if (mat) mat.uniforms.uScale.value = window.innerHeight / 2.0;
             }
+            // 星雲解析度
+            if (this._nebulaMat) {
+                this._nebulaMat.uniforms.iResolution.value.set(window.innerWidth, window.innerHeight);
+            }
             // 若 HUD 開啟中，重新計算面板與連線位置
             if (this._hud && this._hud.classList.contains('visible') && this._lastTarget && this._lastHudData) {
                 this._openHUDLayout(this._lastTarget, this._lastHudData);
@@ -750,7 +869,6 @@ class StarField {
         this._updateResponsiveCSS();
     }
 
-    // ─── 運動模糊 Radial Blur Pass ───────────────────────────────────────────
     // ─── 星雲背景球體（Shadertoy GLSL 入口） ────────────────────────────────
     _initNebula() {
         if (!PARAMS.nebulaEnabled) return;
@@ -779,7 +897,6 @@ class StarField {
         const fragmentShader = /* glsl */`
             uniform float iTime;
             uniform vec2  iResolution;
-            uniform vec4  iMouse;
             uniform float iOpacity;
             uniform float uBrightness;
 
@@ -886,7 +1003,6 @@ class StarField {
             uniforms: {
                 iTime:        { value: 0.0 },
                 iResolution:  { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-                iMouse:       { value: new THREE.Vector4(0, 0, 0, 0) },
                 iOpacity:     { value: PARAMS.nebulaOpacity },
                 uBrightness:  { value: PARAMS.nebulaBrightness },
                 uInvProjView: { value: invProjView },
@@ -912,13 +1028,10 @@ class StarField {
         nebulaMesh.renderOrder   = -1;
         this.scene.add(nebulaMesh);
         this._nebulaMesh = nebulaMesh;
-
-        window.addEventListener('resize', () => {
-            if (this._nebulaMat)
-                this._nebulaMat.uniforms.iResolution.value.set(window.innerWidth, window.innerHeight);
-        });
+        // 註：星雲解析度的 resize 更新已合併到 _initRenderer 的統一 resize handler
     }
 
+    // ─── 運動模糊 Radial Blur Pass ───────────────────────────────────────────
     _initMotionBlur() {
         if (!PARAMS.motionBlurEnabled) { this._motionBlurPass = null; return; }
 
@@ -967,6 +1080,7 @@ class StarField {
         this.composer.addPass(this._motionBlurPass);
     }
 
+    // ═══════════════════════════ 星球 ════════════════════════════════════════
     // ─── 星球 3D 球體（GLSL 材質入口） ──────────────────────────────────────
     _initPlanet() {
         // ── Vertex Shader ────────────────────────────────────────────────────
@@ -1083,6 +1197,7 @@ class StarField {
         this._ghostPlanet = null;
     }
 
+    // ═══════════════════════════ UI（選單／標題／返回鈕） ═════════════════════
     // ─── 左側控制選單 ────────────────────────────────────────────────────────
     _initMenu() {
         // 左上角星球名稱框（白框）
@@ -1214,6 +1329,633 @@ class StarField {
         });
     }
 
+    // ═══════════════════════════ 星場與標籤 ══════════════════════════════════
+    // ─── 在視椎內生成一個隨機星星位置 ─────────────────────────────────────────
+    // halfAngleRad：視椎半角（弧度）；R：最大半徑（中心軸朝 -Z）
+    _randomStarInFrustum(halfAngleRad, R) {
+        // 在以 -Z 為中心軸的錐體內均勻取方向
+        const cosMax = Math.cos(halfAngleRad);
+        const cosT   = 1 - Math.random() * (1 - cosMax); // cosθ ∈ [cosMax, 1]
+        const sinT   = Math.sqrt(1 - cosT * cosT);
+        const phi    = Math.random() * Math.PI * 2;
+        const r      = R * Math.cbrt(Math.random());
+        return {
+            x:  r * sinT * Math.cos(phi),
+            y:  r * sinT * Math.sin(phi),
+            z: -r * cosT,                  // 負 Z = 相機正前方
+        };
+    }
+
+    // ─── 均勻分布於半徑 R 的球體內 ───────────────────────────────────────────
+    _sampleSphere(R) {
+        const r    = R * Math.cbrt(Math.random());
+        const cosT = Math.random() * 2 - 1;
+        const sinT = Math.sqrt(1 - cosT * cosT);
+        const phi  = Math.random() * Math.PI * 2;
+        return {
+            x: r * sinT * Math.cos(phi),
+            y: r * sinT * Math.sin(phi),
+            z: r * cosT,
+        };
+    }
+
+    // ─── 星星點雲用 ShaderMaterial（支援距離淡出） ───────────────────────────
+    _makeStarMaterial(size) {
+        return new THREE.ShaderMaterial({
+            uniforms: {
+                uMap:         { value: makeStarTexture() },
+                uSize:        { value: size },
+                uScale:       { value: window.innerHeight / 2.0 },
+                uBrightness:  { value: PARAMS.starBrightness },
+                uFadeRadius:  { value: PARAMS.starFadeRadius },
+                uFadeRange:   { value: PARAMS.starFadeRange },
+            },
+            vertexShader: /* glsl */`
+                uniform float uSize;
+                uniform float uScale;
+                uniform float uFadeRadius;
+                uniform float uFadeRange;
+                attribute vec3 color;
+                varying   vec3 vColor;
+                varying   float vAlpha;
+
+                void main() {
+                    vColor = color;
+                    vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+                    float dist = length(mvPos.xyz);
+                    // fadeRadius 內全亮，fadeRadius+fadeRange 外 alpha=0
+                    vAlpha = 1.0 - smoothstep(uFadeRadius, uFadeRadius + uFadeRange, dist);
+                    gl_PointSize = uSize * uScale / (-mvPos.z);
+                    gl_Position  = projectionMatrix * mvPos;
+                }
+            `,
+            fragmentShader: /* glsl */`
+                uniform sampler2D uMap;
+                uniform float uBrightness;
+                varying vec3  vColor;
+                varying float vAlpha;
+
+                void main() {
+                    vec4 tex = texture2D(uMap, gl_PointCoord);
+                    float a = tex.a * vAlpha;
+                    if (a < 0.01) discard;
+                    gl_FragColor = vec4(vColor * tex.rgb * uBrightness, a);
+                }
+            `,
+            transparent: true,
+            depthWrite:  false,
+        });
+    }
+
+    // ─── 共用：建立 starCount 顆星的點雲 ─────────────────────────────────────
+    // size：星點大小；sampler：回傳 {x,y,z} 的位置取樣函式（決定分布形狀）
+    // 回傳 { points, material, velocities }
+    _buildStars(size, sampler) {
+        const count = PARAMS.starCount;
+        const pos   = new Float32Array(count * 3);
+        const col   = new Float32Array(count * 3);
+        const vel   = new Float32Array(count * 3); // 每顆星星的漂移速度
+        const color = new THREE.Color();
+        const s     = PARAMS.driftSpeed;
+
+        for (let i = 0; i < count; i++) {
+            const p = sampler();
+            pos[i*3] = p.x; pos[i*3+1] = p.y; pos[i*3+2] = p.z;
+
+            // 顏色：75% 藍白色（類太陽型），25% 暖黃色
+            const warm = Math.random() < 0.25;
+            color.setHSL(
+                warm ? 0.07 + Math.random() * 0.07 : 0.58 + Math.random() * 0.10,
+                warm ? 0.4  + Math.random() * 0.3  : 0.2  + Math.random() * 0.3,
+                0.75 + Math.random() * 0.25
+            );
+            col[i*3] = color.r; col[i*3+1] = color.g; col[i*3+2] = color.b;
+
+            // 隨機漂移速度
+            vel[i*3]   = (Math.random() - 0.5) * s;
+            vel[i*3+1] = (Math.random() - 0.5) * s;
+            vel[i*3+2] = (Math.random() - 0.5) * s;
+        }
+
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        geo.setAttribute('color',    new THREE.BufferAttribute(col, 3));
+
+        const material = this._makeStarMaterial(size);
+        return { points: new THREE.Points(geo, material), material, velocities: vel };
+    }
+
+    // ─── 套用漂移：每幀將速度疊加到位置（需 needsUpdate 重新上傳 GPU）─────────
+    _applyDrift(points, vel) {
+        const attr = points.geometry.getAttribute('position');
+        const pos  = attr.array;
+        for (let i = 0; i < pos.length; i++) pos[i] += vel[i];
+        attr.needsUpdate = true;
+    }
+
+    // ─── 遠景星場（相機視錐內分布，提供標籤定位與背景，全程顯示）──────────────
+    _initStars() {
+        const R           = PARAMS.radius;
+        // 視椎半角：以 FOV 的 1.4 倍確保邊緣星星夠多，含寬螢幕水平延伸
+        const frustumHalf = THREE.MathUtils.degToRad(PARAMS.fovDefault * 1.4);
+        const { points, material, velocities } =
+            this._buildStars(PARAMS.starSizeFar, () => this._randomStarInFrustum(frustumHalf, R));
+        this.stars    = points;
+        this._starMat = material;
+        this._vel     = velocities;
+        this.scene.add(this.stars);
+    }
+
+    // ─── 本地星場（目標周圍全球體分布，飛行後顯示，返回時隱藏）────────────────
+    _initLocalStars() {
+        const R = PARAMS.radius;
+        const { points, material, velocities } =
+            this._buildStars(PARAMS.starSize, () => this._sampleSphere(R));
+        this.starsNear    = points;
+        this._starNearMat = material;
+        this._velNear     = velocities;
+        this.starsNear.visible = false;
+        this.scene.add(this.starsNear);
+    }
+
+    // 將本地星場移到目標位置並顯示
+    _showLocalStars(target) {
+        this.starsNear.position.copy(target);
+        this.starsNear.visible = true;
+    }
+
+    // 隱藏本地星場（返回時呼叫）
+    _hideLocalStars() {
+        this.starsNear.visible = false;
+    }
+
+    // ─── 建立 2D 選項框標籤 ─────────────────────────────────────────────────
+    _initLabels() {
+        const attr    = this.stars.geometry.getAttribute('position');
+        const indices = new Set();
+
+        // 隨機選取不重複的星星索引
+        while (indices.size < PARAMS.labelCount) {
+            indices.add(Math.floor(Math.random() * PARAMS.starCount));
+        }
+
+        // 為每個索引建立 DOM 元素與對應資料
+        // wasInView：追蹤上一幀是否在畫面中，用於偵測「剛離開畫面」的時機
+        this._labels = [...indices].map((idx, i) => {
+            const data = generateStarData(
+                new THREE.Vector3(attr.getX(idx), attr.getY(idx), attr.getZ(idx)), i
+            );
+
+            const el = document.createElement('div');
+            el.className = 'star-label';
+            el.innerHTML = `<span class="star-label-text">${data.id}</span>`;
+            document.body.appendChild(el);
+
+            // 聚焦動畫：獨立元素，定位於星球投影座標中心
+            const reticle = document.createElement('div');
+            reticle.className = 'star-reticle';
+            reticle.innerHTML = `<div class="rc tl"></div><div class="rc tr"></div><div class="rc bl"></div><div class="rc br"></div>`;
+            document.body.appendChild(reticle);
+
+            return { idx, data, el, reticle, wasInView: true };
+        });
+
+        this._labelsVisible = true;
+    }
+
+    // 淡入顯示所有標籤
+    _showLabels() {
+        this._labelsVisible = true;
+        this._labels.forEach(({ el, reticle }) => {
+            el.style.display = '';
+            reticle.style.display = '';
+            gsap.fromTo(el,      { opacity: 0 }, { opacity: 1, duration: 0.5 });
+            gsap.fromTo(reticle, { opacity: 0 }, { opacity: 1, duration: 0.5 });
+        });
+    }
+
+    // 淡出隱藏所有標籤
+    _hideLabels() {
+        this._labelsVisible = false;
+        this._labels.forEach(({ el, reticle }) => {
+            gsap.to(el, {
+                opacity: 0, duration: 0.25,
+                onComplete: () => { el.style.display = 'none'; }
+            });
+            gsap.to(reticle, {
+                opacity: 0, duration: 0.25,
+                onComplete: () => { reticle.style.display = 'none'; }
+            });
+        });
+    }
+
+    // NDC → 螢幕 Y，判斷是否落在標題遮罩區域內
+    _isInHeroMask(ndcY) {
+        const sy = (ndcY * -0.5 + 0.5) * window.innerHeight;
+        return sy < PARAMS.heroMaskHeight;
+    }
+
+    // 在所有星星中找出畫面內的索引（排除已使用的 + 標題遮罩）
+    _pickVisibleStarIndex(excludeIndices) {
+        const attr  = this.stars.geometry.getAttribute('position');
+        const v     = new THREE.Vector3();
+        const cands = [];
+        const excl  = new Set(excludeIndices);
+
+        for (let i = 0; i < PARAMS.starCount; i++) {
+            if (excl.has(i)) continue;
+            // 原地投影至 NDC（重用 v，避免每次迭代配置 Vector3）
+            v.set(attr.getX(i), attr.getY(i), attr.getZ(i)).project(this.camera);
+            // NDC 範圍 [-0.85, 0.85] 確保標籤有足夠邊距，並排除標題遮罩區
+            if (v.z <= 1 && Math.abs(v.x) < 0.85 && Math.abs(v.y) < 0.85
+                && !this._isInHeroMask(v.y)) {
+                cands.push(i);
+            }
+        }
+        return cands.length ? cands[Math.floor(Math.random() * cands.length)] : null;
+    }
+
+    // 每幀將 3D 位置投影至螢幕座標，更新標籤位置
+    // 若星星離開畫面則重新選取一顆可見的星星
+    _updateLabelPositions() {
+        if (!this._labelsVisible) return;
+        const attr = this.stars.geometry.getAttribute('position');
+        const v    = new THREE.Vector3();
+
+        this._labels.forEach((label, i) => {
+            // 原地投影至 NDC（重用 v）
+            v.set(attr.getX(label.idx), attr.getY(label.idx), attr.getZ(label.idx)).project(this.camera);
+            const ndc     = v;
+            const inView  = ndc.z <= 1
+                         && Math.abs(ndc.x) < 0.85
+                         && Math.abs(ndc.y) < 0.85
+                         && !this._isInHeroMask(ndc.y);
+
+            if (!inView) {
+                // 剛離開畫面：重新選取一顆畫面內的星星（只觸發一次）
+                if (label.wasInView) {
+                    label.wasInView = false;
+                    const others = this._labels.map(l => l.idx);
+                    const newIdx = this._pickVisibleStarIndex(others);
+                    if (newIdx !== null) {
+                        label.idx  = newIdx;
+                        label.data = generateStarData(
+                            new THREE.Vector3(attr.getX(newIdx), attr.getY(newIdx), attr.getZ(newIdx)), i
+                        );
+                        label.el.querySelector('.star-label-text').textContent = label.data.id;
+                    }
+                }
+                label.el.style.visibility      = 'hidden';
+                label.reticle.style.visibility = 'hidden';
+                return;
+            }
+
+            const sx = (ndc.x *  0.5 + 0.5) * window.innerWidth;
+            const sy = (ndc.y * -0.5 + 0.5) * window.innerHeight;
+
+            label.wasInView                = true;
+            label.el.style.visibility      = '';
+            label.el.style.left            = `${sx}px`;
+            label.el.style.top             = `${sy}px`;
+
+            // 聚焦動畫居中在星球投影點
+            label.reticle.style.visibility = '';
+            label.reticle.style.left       = `${sx}px`;
+            label.reticle.style.top        = `${sy}px`;
+        });
+    }
+
+    // ═══════════════════════════ HUD 資訊面板 ════════════════════════════════
+    // ─── 建立 HUD 資訊面板 DOM ───────────────────────────────────────────────
+    _initHUD() {
+        const hud = document.createElement('div');
+        hud.id = 'star-hud';
+        document.body.appendChild(hud);
+        this._hud = hud;
+
+        // SVG 層：用於畫心智圖連線（全螢幕覆蓋，不攔截事件）
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;';
+        hud.appendChild(svg);
+        this._svg = svg;
+
+        // 瞄準環
+        const reticle = document.createElement('div');
+        reticle.className = 'reticle';
+        reticle.innerHTML = `
+            <div class="corner tl"></div><div class="corner tr"></div>
+            <div class="corner bl"></div><div class="corner br"></div>
+            <div class="ring ring-outer"></div>
+            <div class="ring ring-inner"></div>
+        `;
+        hud.appendChild(reticle);
+        this._reticle = reticle;
+
+        // 根據 infoPanelCount 建立對應數量的面板 DOM
+        const count = Math.min(PARAMS.infoPanelCount, PANEL_DEFS.length);
+        this._panels = PANEL_DEFS.slice(0, count).map((def, i) => {
+            const panel = document.createElement('div');
+            panel.className = 'info-panel';
+
+            const ch = String(i + 1).padStart(2, '0');
+            panel.innerHTML = `
+                <span class="pc tl"></span><span class="pc tr"></span>
+                <span class="pc bl"></span><span class="pc br"></span>
+                <div class="scan-line"></div>
+                <div class="panel-header">
+                    <span class="panel-status"></span>
+                    <span class="panel-title">${def.title}</span>
+                    <span class="panel-id"></span>
+                </div>
+                <div class="panel-body"></div>
+                <div class="panel-footer">
+                    <span class="pf-label">CH ${ch}</span>
+                    <span class="pf-bar"><i></i></span>
+                    <span class="pf-val">LOCKED</span>
+                </div>
+            `;
+
+            hud.appendChild(panel);
+            return { el: panel, def };
+        });
+    }
+
+    // 開啟 HUD：定位瞄準環、擺放面板、畫心智圖連線
+    _openHUD(target, data) {
+        this._lastHudData = data; // 儲存供 resize 時重繪使用
+
+        // 抵達目的地，刪除飛行期間留下的舊星球 ghost
+        this._removeGhostPlanet();
+
+        // 從當前相機位置重新計算軌道角度，確保第一幀無跳動
+        const orbitOffset = this.camera.position.clone().sub(target);
+        this._orbitAngle = Math.atan2(orbitOffset.x, orbitOffset.z);
+
+        // 啟動軌道旋轉
+        this._orbiting = true;
+
+        // 顯示選單、返回按鈕，並整體淡入 HUD（星球已在 _flyTo 開始時顯示）
+        this._hud.classList.add('visible');
+        gsap.fromTo(this._hud, { opacity: 0 }, { opacity: 1, duration: PARAMS.infoPanelFadeIn });
+        this._showMenu();
+        this._showBackBtn();
+
+        // 更新選單左上角星球名稱
+        if (this._menuStarName) {
+            this._menuStarName.querySelector('.star-name-id').textContent   = data.id;
+            this._menuStarName.querySelector('.star-name-type').textContent = data.type || '';
+            gsap.fromTo(this._menuStarName, { opacity: 0 }, { opacity: 1, duration: 0.4, delay: 0.1 });
+        }
+
+        this._openHUDLayout(target, data);
+    }
+
+    // 純佈局（可在 resize 時重複呼叫）
+    _openHUDLayout(target, data) {
+        const ndc = target.clone().project(this.camera);
+        const sx  = (ndc.x *  0.5 + 0.5) * window.innerWidth;
+        const sy  = (ndc.y * -0.5 + 0.5) * window.innerHeight;
+
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+
+        // 瞄準環（可透過 reticleOffsetX/Y 微調位置）
+        this._reticle.style.left = `${sx + PARAMS.reticleOffsetX}px`;
+        this._reticle.style.top  = `${sy + PARAMS.reticleOffsetY}px`;
+
+        const W      = PARAMS.infoPanelWidth;
+        const M      = 10;
+        const SVG_NS = 'http://www.w3.org/2000/svg';
+
+        // 連線起點：從星球螢幕位置出發（% 偏移）
+        const lsx = PARAMS.mindMapStartOffsetX / 100 * vw;
+        const lsy = PARAMS.mindMapStartOffsetY / 100 * vh;
+        // 分支點：視窗絕對位置（% of vw）
+        const bx  = PARAMS.mindMapBranchX / 100 * vw;
+
+        // 清除舊連線
+        this._svg.innerHTML = '';
+
+        this._panels.forEach(({ el, def }) => {
+            // 面板 X：視窗絕對位置（% of vw），與星球螢幕 X 無關
+            const px = Math.max(M, Math.min(
+                PARAMS.infoPanelAnchorX / 100 * vw,
+                vw - W - M
+            ));
+            // 面板 Y：星球螢幕 Y + 各面板垂直偏移（% of vh）+ 全局偏移
+            const py = Math.max(M,
+                sy + def.offsetY / 100 * vh + PARAMS.infoPanelGlobalOffsetY / 100 * vh
+            );
+            el.style.left = `${px}px`;
+            el.style.top  = `${py}px`;
+
+            // 填入資料
+            el.querySelector('.panel-id').textContent = data.id;
+            el.querySelector('.panel-body').innerHTML = def.rows(data)
+                .map(([k, v]) => `<div class="data-row">
+                    <span class="key">${k}</span><span class="lead"></span><span class="val">${v}</span>
+                </div>`).join('');
+
+            // 連線終點（面板左緣中線 + endOffset）
+            const rowH      = def.rows(data).length * PARAMS.infoPanelRowH;
+            const panelMidY = py + PARAMS.infoPanelHeaderH + rowH / 2;
+            const endX      = px + PARAMS.mindMapEndOffsetX;
+            const endY      = panelMidY + PARAMS.mindMapEndOffsetY;
+
+            // 佈線：水平主幹 → 交會點斜向分岔 → 水平接入面板
+            const dx   = endX - bx;          // 交會點到面板的水平距離
+            const span = endY - lsy;         // 有號垂直距離（>0 = 面板在下方）
+            let d;
+            if (Math.abs(span) < 1) {
+                d = `M ${lsx} ${lsy} H ${endX}`;                  // 幾乎同高 → 直接水平
+            } else {
+                const diag   = Math.min(Math.abs(span), dx);     // 斜段水平量（≤45°）
+                const elbowX = bx + diag;                        // 斜線轉水平的折點
+                d = `M ${lsx} ${lsy} H ${bx} L ${elbowX} ${endY} H ${endX}`;
+            }
+            this._svg.appendChild(this._mmPath(d, 'mm-glow')); // 外發光
+            this._svg.appendChild(this._mmPath(d, 'mm-line')); // 主線
+            this._svg.appendChild(this._mmPath(d, 'mm-flow')); // 流動封包
+
+            // 面板側端點：菱形節點
+            const node = document.createElementNS(SVG_NS, 'rect');
+            node.setAttribute('x', endX - 4);
+            node.setAttribute('y', endY - 4);
+            node.setAttribute('width',  8);
+            node.setAttribute('height', 8);
+            node.setAttribute('transform', `rotate(45 ${endX} ${endY})`);
+            node.setAttribute('class', 'mm-node');
+            this._svg.appendChild(node);
+        });
+
+        // 起點節點（星球側）：脈動外環 + 實心核心
+        const ring = document.createElementNS(SVG_NS, 'circle');
+        ring.setAttribute('cx', lsx); ring.setAttribute('cy', lsy);
+        ring.setAttribute('r', 5);    ring.setAttribute('class', 'mm-origin');
+        this._svg.appendChild(ring);
+        const core = document.createElementNS(SVG_NS, 'circle');
+        core.setAttribute('cx', lsx); core.setAttribute('cy', lsy);
+        core.setAttribute('r', 2);    core.setAttribute('class', 'mm-node-core');
+        this._svg.appendChild(core);
+    }
+
+    // 建立一條心智圖連線 path（共用 d，套不同樣式類別）
+    _mmPath(d, cls) {
+        const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        p.setAttribute('d', d);
+        p.setAttribute('class', cls);
+        return p;
+    }
+
+    // 關閉 HUD → 觸發白閃過場
+    _closeHUD() {
+        this._orbiting = false;
+        this._hidePlanet();
+        this._hideLocalStars();
+        this._hideMenu();
+        this._hideBackBtn();
+        gsap.to(this._hud, {
+            opacity: 0, duration: 0.3,
+            onComplete: () => {
+                this._hud.classList.remove('visible');
+                this._flashAndReset();
+            }
+        });
+    }
+
+    // ═══════════════════════════ 飛行／導航／過場 ════════════════════════════
+    // ─── 選取前方視錐內的隨機星星 ───────────────────────────────────────────
+    _pickTarget() {
+        const camPos    = this.camera.position; // 只讀，不需 clone
+        const camFwd    = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
+        const cosMax    = Math.cos(THREE.MathUtils.degToRad(PARAMS.coneDeg));
+        const minDistSq = PARAMS.minDist * PARAMS.minDist;
+        const attr      = this.stars.geometry.getAttribute('position');
+        const cands     = []; // 只存索引，避免每顆星配置 Vector3
+        const s         = new THREE.Vector3();
+
+        for (let i = 0; i < PARAMS.starCount; i++) {
+            s.set(attr.getX(i), attr.getY(i), attr.getZ(i));
+            if (s.distanceToSquared(camPos) < minDistSq) continue; // 平方距離省去 sqrt
+            s.sub(camPos).normalize();                             // s 轉為方向向量
+            if (s.dot(camFwd) > cosMax) cands.push(i);
+        }
+
+        if (!cands.length) return null;
+        const idx = cands[Math.floor(Math.random() * cands.length)];
+        return new THREE.Vector3(attr.getX(idx), attr.getY(idx), attr.getZ(idx));
+    }
+
+    // ─── 相機飛行至目標星星 ──────────────────────────────────────────────────
+    _flyTo(target, data = null, { flyTimeOverride = null } = {}) {
+        this._busy = true;
+        PARAMS.pageState = 1;
+        this._lastTarget = target.clone(); // 儲存目標供返回動畫使用
+        this._hideLabels();
+        this._hideHeroTitle();
+
+        // 顯示新目標星球 + 在目標位置生成本地星場
+        this._showPlanet(target);
+        this._showLocalStars(target);
+
+        const { fovDefault, fovWarp, stopDist, bloomPeak, bloomTime, cameraHeightOffset } = PARAMS;
+        const flyTime = flyTimeOverride ?? PARAMS.flyTime;
+
+        // 計算基礎停止位置（沿進場方向退後 stopDist）
+        const camPos   = this.camera.position.clone();
+        const toTarget = target.clone().sub(camPos).normalize();
+
+        // 以 orbitInitAngle 決定抵達時的軌道角度，並設定初始 orbit 角度
+        const initRad       = THREE.MathUtils.degToRad(PARAMS.orbitInitAngle);
+        this._orbitAngle    = Math.atan2(
+            -(toTarget.x), -(toTarget.z)   // 抵達方向對應的弧度
+        ) + initRad;
+
+        const dest = target.clone().add(new THREE.Vector3(
+            Math.sin(this._orbitAngle) * stopDist,
+            cameraHeightOffset,
+            Math.cos(this._orbitAngle) * stopDist
+        ));
+
+        // 取得當前與目標的朝向向量，用於平滑轉向
+        // 當前相機朝向（用於轉向起點）
+        const startDir  = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
+        const targetDir = toTarget.clone();
+
+        // 夾角 > 90° 時轉向時間 × 2，給相機更多時間迴轉
+        const { turnRatio, fovPeakRatio } = PARAMS;
+        const angleDot      = startDir.dot(targetDir);
+        const effectiveTurn = angleDot < 0
+            ? Math.min(turnRatio * 2.5, 0.9)
+            : turnRatio;
+
+        // 飛行結束時的 lookAt 切線偏移（與 _openHUD 重算的 orbitAngle 一致，保證無縫）
+        const finalTangent = new THREE.Vector3(
+            Math.cos(this._orbitAngle),
+            0,
+            -Math.sin(this._orbitAngle)
+        ).multiplyScalar(PARAMS.cameraLookOffsetX);
+
+        // 單一 progress 驅動全部視角插值
+        const lookProg = { t: 0 };
+
+        const tl = gsap.timeline({
+            onComplete: () => this._openHUD(target, data || generateStarData(target, 0))
+        });
+
+        // ── 相機位置：全程移動（所有動畫同步開始）──
+        tl.to(this.camera.position, {
+            x: dest.x, y: dest.y, z: dest.z,
+            duration: flyTime,
+            ease: 'power2.inOut',
+            onUpdate: () => {
+                const t = lookProg.t;
+                if (t < effectiveTurn) {
+                    // 前段：轉向目標
+                    const localT = t / effectiveTurn;
+                    const dir = startDir.clone().lerp(targetDir, localT).normalize();
+                    this.camera.lookAt(this.camera.position.clone().add(dir));
+                } else {
+                    // 後段：對準目標，漸加切線偏移
+                    const localT = (t - effectiveTurn) / (1 - effectiveTurn);
+                    this.camera.lookAt(target.clone().addScaledVector(finalTangent, localT));
+                }
+            },
+        });
+
+        // ── lookProg 與位置同步，相同 ease ──
+        tl.to(lookProg, {
+            t: 1, duration: flyTime, ease: 'power2.inOut',
+        }, '<');
+
+        // ── FOV 鐘形（含 hold 停留）──
+        // expandEnd = peakCenter - holdHalf，contractStart = peakCenter + holdHalf
+        {
+            const { fovHoldRatio } = PARAMS;
+            const expandEnd      = flyTime * (fovPeakRatio - fovHoldRatio / 2);
+            const contractStart  = flyTime * (fovPeakRatio + fovHoldRatio / 2);
+            tl.to(this.camera, {
+                fov: fovWarp,
+                duration: expandEnd,
+                ease: 'power2.in',
+                onUpdate: () => this.camera.updateProjectionMatrix(),
+            }, 0);
+            tl.to(this.camera, {
+                fov: fovDefault,
+                duration: flyTime - contractStart,
+                ease: 'power2.out',
+                onUpdate: () => this.camera.updateProjectionMatrix(),
+            }, contractStart);
+        }
+
+        // ── Bloom 增強（t=0 起，與飛行同步）──
+        tl.to(this.bloom, {
+            strength: bloomPeak,
+            duration: bloomTime,
+            ease: 'power2.in',
+        }, 0);
+    }
+
     // ─── 快速切換到下一顆 / 上一顆標籤星球 ─────────────────────────────────
     // dir: +1 = 下一顆，-1 = 上一顆
     _jumpToLabel(dir) {
@@ -1278,7 +2020,7 @@ class StarField {
         this._hideMenu();
         this._hideBackBtn();
 
-        const { bloomDefault, flyBackTime, fovDefault, fovWarp, fovPeakRatio } = PARAMS;
+        const { bloomPeak, flyBackTime, fovDefault, fovWarp, fovPeakRatio } = PARAMS;
 
         const currentDir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
         const target     = this._lastTarget.clone();
@@ -1394,592 +2136,6 @@ class StarField {
         tl.to(this.bloom, { strength: bloomPeak, duration: flyBackTime * 0.4, ease: 'power2.in' }, phase1);
     }
 
-    // ─── 在視椎內生成一個隨機星星位置 ─────────────────────────────────────────
-    // halfAngleRad：視椎半角（弧度）；R：最大半徑；forwardZ：-1（朝 -Z）
-    _randomStarInFrustum(halfAngleRad, R) {
-        // 在以 -Z 為中心軸的錐體內均勻取方向
-        const cosMax = Math.cos(halfAngleRad);
-        const cosT   = 1 - Math.random() * (1 - cosMax); // cosθ ∈ [cosMax, 1]
-        const sinT   = Math.sqrt(1 - cosT * cosT);
-        const phi    = Math.random() * Math.PI * 2;
-        const r      = R * Math.cbrt(Math.random());
-        return {
-            x:  r * sinT * Math.cos(phi),
-            y:  r * sinT * Math.sin(phi),
-            z: -r * cosT,                  // 負 Z = 相機正前方
-        };
-    }
-
-    // ─── 星星點雲用 ShaderMaterial（支援距離淡出） ───────────────────────────
-    _makeStarMaterial(size) {
-        return new THREE.ShaderMaterial({
-            uniforms: {
-                uMap:         { value: makeStarTexture() },
-                uSize:        { value: size },
-                uScale:       { value: window.innerHeight / 2.0 },
-                uBrightness:  { value: PARAMS.starBrightness },
-                uFadeRadius:  { value: PARAMS.starFadeRadius },
-                uFadeRange:   { value: PARAMS.starFadeRange },
-            },
-            vertexShader: /* glsl */`
-                uniform float uSize;
-                uniform float uScale;
-                uniform float uFadeRadius;
-                uniform float uFadeRange;
-                attribute vec3 color;
-                varying   vec3 vColor;
-                varying   float vAlpha;
-
-                void main() {
-                    vColor = color;
-                    vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
-                    float dist = length(mvPos.xyz);
-                    // fadeRadius 內全亮，fadeRadius+fadeRange 外 alpha=0
-                    vAlpha = 1.0 - smoothstep(uFadeRadius, uFadeRadius + uFadeRange, dist);
-                    gl_PointSize = uSize * uScale / (-mvPos.z);
-                    gl_Position  = projectionMatrix * mvPos;
-                }
-            `,
-            fragmentShader: /* glsl */`
-                uniform sampler2D uMap;
-                uniform float uBrightness;
-                varying vec3  vColor;
-                varying float vAlpha;
-
-                void main() {
-                    vec4 tex = texture2D(uMap, gl_PointCoord);
-                    float a = tex.a * vAlpha;
-                    if (a < 0.01) discard;
-                    gl_FragColor = vec4(vColor * tex.rgb * uBrightness, a);
-                }
-            `,
-            transparent: true,
-            depthWrite:  false,
-        });
-    }
-
-    // ─── 建立星星點雲 ────────────────────────────────────────────────────────
-    _initStars() {
-        const count = PARAMS.starCount;
-        const R     = PARAMS.radius;
-        const pos   = new Float32Array(count * 3);
-        const col   = new Float32Array(count * 3);
-        this._vel   = new Float32Array(count * 3); // 每顆星星的漂移速度
-
-        // 視椎半角：以 FOV 的 1.4 倍確保邊緣星星夠多，含寬螢幕水平延伸
-        const frustumHalf = THREE.MathUtils.degToRad(PARAMS.fovDefault * 1.4);
-
-        const color = new THREE.Color();
-
-        for (let i = 0; i < count; i++) {
-            // 在相機視椎錐體內均勻分布（取代原本的全球體分布）
-            const { x, y, z } = this._randomStarInFrustum(frustumHalf, R);
-            pos[i*3]   = x;
-            pos[i*3+1] = y;
-            pos[i*3+2] = z;
-
-            // 顏色：75% 藍白色（類太陽型），25% 暖黃色
-            const warm = Math.random() < 0.25;
-            color.setHSL(
-                warm ? 0.07 + Math.random() * 0.07 : 0.58 + Math.random() * 0.10,
-                warm ? 0.4  + Math.random() * 0.3  : 0.2  + Math.random() * 0.3,
-                0.75 + Math.random() * 0.25
-            );
-            col[i*3]   = color.r;
-            col[i*3+1] = color.g;
-            col[i*3+2] = color.b;
-
-            // 隨機漂移速度
-            const s = PARAMS.driftSpeed;
-            this._vel[i*3]   = (Math.random() - 0.5) * s;
-            this._vel[i*3+1] = (Math.random() - 0.5) * s;
-            this._vel[i*3+2] = (Math.random() - 0.5) * s;
-        }
-
-        const geo = new THREE.BufferGeometry();
-        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-        geo.setAttribute('color',    new THREE.BufferAttribute(col, 3));
-
-        this._starMat = this._makeStarMaterial(1.4);
-        this.stars = new THREE.Points(geo, this._starMat);
-
-        // 不加入場景（只保留 geometry 供標籤位置計算）
-        this.scene.add(this.stars);
-    }
-
-    // ─── 建立目標位置的本地星場（選定目標後生成，返回時隱藏）────────────────
-    _initLocalStars() {
-        const count = PARAMS.starCount;
-        const R     = PARAMS.radius;
-        const pos   = new Float32Array(count * 3);
-        const col   = new Float32Array(count * 3);
-        this._velNear = new Float32Array(count * 3);
-
-        const color = new THREE.Color();
-
-        for (let i = 0; i < count; i++) {
-            const r    = R * Math.cbrt(Math.random());
-            const cosT = Math.random() * 2 - 1;
-            const sinT = Math.sqrt(1 - cosT * cosT);
-            const phi  = Math.random() * Math.PI * 2;
-
-            pos[i*3]   = r * sinT * Math.cos(phi);
-            pos[i*3+1] = r * sinT * Math.sin(phi);
-            pos[i*3+2] = r * cosT;
-
-            const warm = Math.random() < 0.25;
-            color.setHSL(
-                warm ? 0.07 + Math.random() * 0.07 : 0.58 + Math.random() * 0.10,
-                warm ? 0.4  + Math.random() * 0.3  : 0.2  + Math.random() * 0.3,
-                0.75 + Math.random() * 0.25
-            );
-            col[i*3]   = color.r;
-            col[i*3+1] = color.g;
-            col[i*3+2] = color.b;
-
-            const s = PARAMS.driftSpeed;
-            this._velNear[i*3]   = (Math.random() - 0.5) * s;
-            this._velNear[i*3+1] = (Math.random() - 0.5) * s;
-            this._velNear[i*3+2] = (Math.random() - 0.5) * s;
-        }
-
-        const geo = new THREE.BufferGeometry();
-        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-        geo.setAttribute('color',    new THREE.BufferAttribute(col, 3));
-
-        this._starNearMat = this._makeStarMaterial(PARAMS.starSize);
-        this.starsNear = new THREE.Points(geo, this._starNearMat);
-        this.starsNear.visible = false;
-        this.scene.add(this.starsNear);
-    }
-
-    // 將本地星場移到目標位置並顯示
-    _showLocalStars(target) {
-        this.starsNear.position.copy(target);
-        this.starsNear.visible = true;
-    }
-
-    // 隱藏本地星場（返回時呼叫）
-    _hideLocalStars() {
-        this.starsNear.visible = false;
-    }
-
-    // ─── 建立 2D 選項框標籤 ─────────────────────────────────────────────────
-    _initLabels() {
-        const attr    = this.stars.geometry.getAttribute('position');
-        const indices = new Set();
-
-        // 隨機選取不重複的星星索引
-        while (indices.size < PARAMS.labelCount) {
-            indices.add(Math.floor(Math.random() * PARAMS.starCount));
-        }
-
-        // 為每個索引建立 DOM 元素與對應資料
-        // wasInView：追蹤上一幀是否在畫面中，用於偵測「剛離開畫面」的時機
-        this._labels = [...indices].map((idx, i) => {
-            const data = generateStarData(
-                new THREE.Vector3(attr.getX(idx), attr.getY(idx), attr.getZ(idx)), i
-            );
-
-            const el = document.createElement('div');
-            el.className = 'star-label';
-            el.innerHTML = `<span class="star-label-text">${data.id}</span>`;
-            document.body.appendChild(el);
-
-            // 聚焦動畫：獨立元素，定位於星球投影座標中心
-            const reticle = document.createElement('div');
-            reticle.className = 'star-reticle';
-            reticle.innerHTML = `<div class="rc tl"></div><div class="rc tr"></div><div class="rc bl"></div><div class="rc br"></div>`;
-            document.body.appendChild(reticle);
-
-            return { idx, data, el, reticle, wasInView: true };
-        });
-
-        this._labelsVisible = true;
-    }
-
-    // 淡入顯示所有標籤
-    _showLabels() {
-        this._labelsVisible = true;
-        this._labels.forEach(({ el, reticle }) => {
-            el.style.display = '';
-            reticle.style.display = '';
-            gsap.fromTo(el,      { opacity: 0 }, { opacity: 1, duration: 0.5 });
-            gsap.fromTo(reticle, { opacity: 0 }, { opacity: 1, duration: 0.5 });
-        });
-    }
-
-    // 淡出隱藏所有標籤
-    _hideLabels() {
-        this._labelsVisible = false;
-        this._labels.forEach(({ el, reticle }) => {
-            gsap.to(el, {
-                opacity: 0, duration: 0.25,
-                onComplete: () => { el.style.display = 'none'; }
-            });
-            gsap.to(reticle, {
-                opacity: 0, duration: 0.25,
-                onComplete: () => { reticle.style.display = 'none'; }
-            });
-        });
-    }
-
-    // NDC → 螢幕 Y，判斷是否落在標題遮罩區域內
-    _isInHeroMask(ndcY) {
-        const sy = (ndcY * -0.5 + 0.5) * window.innerHeight;
-        return sy < PARAMS.heroMaskHeight;
-    }
-
-    // 在所有星星中找出畫面內的索引（排除已使用的 + 標題遮罩）
-    _pickVisibleStarIndex(excludeIndices) {
-        const attr  = this.stars.geometry.getAttribute('position');
-        const v     = new THREE.Vector3();
-        const cands = [];
-        const excl  = new Set(excludeIndices);
-
-        for (let i = 0; i < PARAMS.starCount; i++) {
-            if (excl.has(i)) continue;
-            v.set(attr.getX(i), attr.getY(i), attr.getZ(i));
-            const ndc = v.clone().project(this.camera);
-            // NDC 範圍 [-0.85, 0.85] 確保標籤有足夠邊距，並排除標題遮罩區
-            if (ndc.z <= 1 && Math.abs(ndc.x) < 0.85 && Math.abs(ndc.y) < 0.85
-                && !this._isInHeroMask(ndc.y)) {
-                cands.push(i);
-            }
-        }
-        return cands.length ? cands[Math.floor(Math.random() * cands.length)] : null;
-    }
-
-    // 每幀將 3D 位置投影至螢幕座標，更新標籤位置
-    // 若星星離開畫面則重新選取一顆可見的星星
-    _updateLabelPositions() {
-        if (!this._labelsVisible) return;
-        const attr = this.stars.geometry.getAttribute('position');
-        const v    = new THREE.Vector3();
-
-        this._labels.forEach((label, i) => {
-            v.set(attr.getX(label.idx), attr.getY(label.idx), attr.getZ(label.idx));
-            const ndc     = v.clone().project(this.camera);
-            const inView  = ndc.z <= 1
-                         && Math.abs(ndc.x) < 0.85
-                         && Math.abs(ndc.y) < 0.85
-                         && !this._isInHeroMask(ndc.y);
-
-            if (!inView) {
-                // 剛離開畫面：重新選取一顆畫面內的星星（只觸發一次）
-                if (label.wasInView) {
-                    label.wasInView = false;
-                    const others = this._labels.map(l => l.idx);
-                    const newIdx = this._pickVisibleStarIndex(others);
-                    if (newIdx !== null) {
-                        label.idx  = newIdx;
-                        label.data = generateStarData(
-                            new THREE.Vector3(attr.getX(newIdx), attr.getY(newIdx), attr.getZ(newIdx)), i
-                        );
-                        label.el.querySelector('.star-label-text').textContent = label.data.id;
-                    }
-                }
-                label.el.style.visibility      = 'hidden';
-                label.reticle.style.visibility = 'hidden';
-                return;
-            }
-
-            const sx = (ndc.x *  0.5 + 0.5) * window.innerWidth;
-            const sy = (ndc.y * -0.5 + 0.5) * window.innerHeight;
-
-            label.wasInView                = true;
-            label.el.style.visibility      = '';
-            label.el.style.left            = `${sx}px`;
-            label.el.style.top             = `${sy}px`;
-
-            // 聚焦動畫居中在星球投影點
-            label.reticle.style.visibility = '';
-            label.reticle.style.left       = `${sx}px`;
-            label.reticle.style.top        = `${sy}px`;
-        });
-    }
-
-    // ─── 建立 HUD 資訊面板 DOM ───────────────────────────────────────────────
-    _initHUD() {
-        const hud = document.createElement('div');
-        hud.id = 'star-hud';
-        document.body.appendChild(hud);
-        this._hud = hud;
-
-        // SVG 層：用於畫心智圖連線（全螢幕覆蓋，不攔截事件）
-        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        svg.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;';
-        hud.appendChild(svg);
-        this._svg = svg;
-
-        // 瞄準環
-        const reticle = document.createElement('div');
-        reticle.className = 'reticle';
-        reticle.innerHTML = `
-            <div class="corner tl"></div><div class="corner tr"></div>
-            <div class="corner bl"></div><div class="corner br"></div>
-            <div class="ring ring-outer"></div>
-            <div class="ring ring-inner"></div>
-        `;
-        hud.appendChild(reticle);
-        this._reticle = reticle;
-
-        // 根據 infoPanelCount 建立對應數量的面板 DOM
-        const count = Math.min(PARAMS.infoPanelCount, PANEL_DEFS.length);
-        this._panels = PANEL_DEFS.slice(0, count).map((def, i) => {
-            const panel = document.createElement('div');
-            panel.className = 'info-panel';
-
-            panel.innerHTML = `
-                <div class="scan-line"></div>
-                <div class="panel-header">
-                    <span class="panel-title">${def.title}</span>
-                    <span class="panel-id"></span>
-                </div>
-                <div class="panel-body"></div>
-            `;
-
-            hud.appendChild(panel);
-            return { el: panel, def };
-        });
-    }
-
-    // 開啟 HUD：定位瞄準環、擺放面板、畫心智圖連線
-    _openHUD(target, data) {
-        this._lastHudData = data; // 儲存供 resize 時重繪使用
-
-        // 抵達目的地，刪除飛行期間留下的舊星球 ghost
-        this._removeGhostPlanet();
-
-        // 從當前相機位置重新計算軌道角度，確保第一幀無跳動
-        const orbitOffset = this.camera.position.clone().sub(target);
-        this._orbitAngle = Math.atan2(orbitOffset.x, orbitOffset.z);
-
-        // 啟動軌道旋轉
-        this._orbiting = true;
-
-        // 顯示選單、返回按鈕，並整體淡入 HUD（星球已在 _flyTo 開始時顯示）
-        this._hud.classList.add('visible');
-        gsap.fromTo(this._hud, { opacity: 0 }, { opacity: 1, duration: PARAMS.infoPanelFadeIn });
-        this._showMenu();
-        this._showBackBtn();
-
-        // 更新選單左上角星球名稱
-        if (this._menuStarName) {
-            this._menuStarName.querySelector('.star-name-id').textContent   = data.id;
-            this._menuStarName.querySelector('.star-name-type').textContent = data.type || '';
-            gsap.fromTo(this._menuStarName, { opacity: 0 }, { opacity: 1, duration: 0.4, delay: 0.1 });
-        }
-
-        this._openHUDLayout(target, data);
-    }
-
-    // 純佈局（可在 resize 時重複呼叫）
-    _openHUDLayout(target, data) {
-        const ndc = target.clone().project(this.camera);
-        const sx  = (ndc.x *  0.5 + 0.5) * window.innerWidth;
-        const sy  = (ndc.y * -0.5 + 0.5) * window.innerHeight;
-
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-
-        // 瞄準環（可透過 reticleOffsetX/Y 微調位置）
-        this._reticle.style.left = `${sx + PARAMS.reticleOffsetX}px`;
-        this._reticle.style.top  = `${sy + PARAMS.reticleOffsetY}px`;
-
-        const W      = PARAMS.infoPanelWidth;
-        const M      = 10;
-        const SVG_NS = 'http://www.w3.org/2000/svg';
-
-        // 連線起點：從星球螢幕位置出發（% 偏移）
-        const lsx = PARAMS.mindMapStartOffsetX / 100 * vw;
-        const lsy = PARAMS.mindMapStartOffsetY / 100 * vh;
-        // 分支點：視窗絕對位置（% of vw）
-        const bx  = PARAMS.mindMapBranchX / 100 * vw;
-
-        // 清除舊連線
-        this._svg.innerHTML = '';
-
-        this._panels.forEach(({ el, def }) => {
-            // 面板 X：視窗絕對位置（% of vw），與星球螢幕 X 無關
-            const px = Math.max(M, Math.min(
-                PARAMS.infoPanelAnchorX / 100 * vw,
-                vw - W - M
-            ));
-            // 面板 Y：星球螢幕 Y + 各面板垂直偏移（% of vh）+ 全局偏移
-            const py = Math.max(M,
-                sy + def.offsetY / 100 * vh + PARAMS.infoPanelGlobalOffsetY / 100 * vh
-            );
-            el.style.left = `${px}px`;
-            el.style.top  = `${py}px`;
-
-            // 填入資料
-            el.querySelector('.panel-id').textContent = data.id;
-            el.querySelector('.panel-body').innerHTML = def.rows(data)
-                .map(([k, v]) => `<div class="data-row">
-                    <span class="key">${k}</span><span class="val">${v}</span>
-                </div>`).join('');
-
-            // 連線終點（面板左緣中線 + endOffset）
-            const rowH      = def.rows(data).length * 22;
-            const panelMidY = py + 30 + rowH / 2;
-            const endX      = px + PARAMS.mindMapEndOffsetX;
-            const endY      = panelMidY + PARAMS.mindMapEndOffsetY;
-
-            // 路徑：起點 → 水平分支點 → 面板終點
-            const path = document.createElementNS(SVG_NS, 'path');
-            path.setAttribute('d', `M ${lsx} ${lsy} L ${bx} ${lsy} L ${endX} ${endY}`);
-            path.setAttribute('stroke', PARAMS.mindMapLineColor);
-            path.setAttribute('stroke-width', String(PARAMS.mindMapLineWidth));
-            path.setAttribute('fill', 'none');
-            this._svg.appendChild(path);
-        });
-    }
-
-    // 關閉 HUD → 觸發白閃過場
-    _closeHUD() {
-        this._orbiting = false;
-        this._hidePlanet();
-        this._hideLocalStars();
-        this._hideMenu();
-        this._hideBackBtn();
-        gsap.to(this._hud, {
-            opacity: 0, duration: 0.3,
-            onComplete: () => {
-                this._hud.classList.remove('visible');
-                this._flashAndReset();
-            }
-        });
-    }
-
-    // ─── 選取前方視錐內的隨機星星 ───────────────────────────────────────────
-    _pickTarget() {
-        const camPos = this.camera.position.clone();
-        const camFwd = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
-        const cosMax = Math.cos(THREE.MathUtils.degToRad(PARAMS.coneDeg));
-        const attr   = this.stars.geometry.getAttribute('position');
-        const cands  = [];
-
-        for (let i = 0; i < PARAMS.starCount; i++) {
-            const s = new THREE.Vector3(attr.getX(i), attr.getY(i), attr.getZ(i));
-            if (s.distanceTo(camPos) < PARAMS.minDist) continue;
-            const dir = s.clone().sub(camPos).normalize();
-            if (dir.dot(camFwd) > cosMax) cands.push(s);
-        }
-
-        return cands.length ? cands[Math.floor(Math.random() * cands.length)] : null;
-    }
-
-    // ─── 相機飛行至目標星星 ──────────────────────────────────────────────────
-    _flyTo(target, data = null, { flyTimeOverride = null } = {}) {
-        this._busy = true;
-        PARAMS.pageState = 1;
-        this._lastTarget = target.clone(); // 儲存目標供返回動畫使用
-        this._hideLabels();
-        this._hideHeroTitle();
-
-        // 顯示新目標星球 + 在目標位置生成本地星場
-        this._showPlanet(target);
-        this._showLocalStars(target);
-
-        const { fovDefault, fovWarp, stopDist, bloomPeak, bloomTime, cameraHeightOffset } = PARAMS;
-        const flyTime = flyTimeOverride ?? PARAMS.flyTime;
-
-        // 計算基礎停止位置（沿進場方向退後 stopDist）
-        const camPos   = this.camera.position.clone();
-        const toTarget = target.clone().sub(camPos).normalize();
-
-        // 以 orbitInitAngle 決定抵達時的軌道角度，並設定初始 orbit 角度
-        const initRad       = THREE.MathUtils.degToRad(PARAMS.orbitInitAngle);
-        this._orbitAngle    = Math.atan2(
-            -(toTarget.x), -(toTarget.z)   // 抵達方向對應的弧度
-        ) + initRad;
-
-        const dest = target.clone().add(new THREE.Vector3(
-            Math.sin(this._orbitAngle) * stopDist,
-            cameraHeightOffset,
-            Math.cos(this._orbitAngle) * stopDist
-        ));
-
-        // 取得當前與目標的朝向向量，用於平滑轉向
-        // 當前相機朝向（用於轉向起點）
-        const startDir  = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
-        const targetDir = toTarget.clone();
-
-        // 夾角 > 90° 時轉向時間 × 2，給相機更多時間迴轉
-        const { turnRatio, fovPeakRatio } = PARAMS;
-        const angleDot      = startDir.dot(targetDir);
-        const effectiveTurn = angleDot < 0
-            ? Math.min(turnRatio * 2.5, 0.9)
-            : turnRatio;
-
-        // 飛行結束時的 lookAt 切線偏移（與 _openHUD 重算的 orbitAngle 一致，保證無縫）
-        const finalTangent = new THREE.Vector3(
-            Math.cos(this._orbitAngle),
-            0,
-            -Math.sin(this._orbitAngle)
-        ).multiplyScalar(PARAMS.cameraLookOffsetX);
-
-        // 單一 progress 驅動全部視角插值
-        const lookProg = { t: 0 };
-
-        const tl = gsap.timeline({
-            onComplete: () => this._openHUD(target, data || generateStarData(target, 0))
-        });
-
-        // ── 相機位置：全程移動（所有動畫同步開始）──
-        tl.to(this.camera.position, {
-            x: dest.x, y: dest.y, z: dest.z,
-            duration: flyTime,
-            ease: 'power2.inOut',
-            onUpdate: () => {
-                const t = lookProg.t;
-                if (t < effectiveTurn) {
-                    // 前段：轉向目標
-                    const localT = t / effectiveTurn;
-                    const dir = startDir.clone().lerp(targetDir, localT).normalize();
-                    this.camera.lookAt(this.camera.position.clone().add(dir));
-                } else {
-                    // 後段：對準目標，漸加切線偏移
-                    const localT = (t - effectiveTurn) / (1 - effectiveTurn);
-                    this.camera.lookAt(target.clone().addScaledVector(finalTangent, localT));
-                }
-            },
-        });
-
-        // ── lookProg 與位置同步，相同 ease ──
-        tl.to(lookProg, {
-            t: 1, duration: flyTime, ease: 'power2.inOut',
-        }, '<');
-
-        // ── FOV 鐘形（含 hold 停留）──
-        // expandEnd = peakCenter - holdHalf，contractStart = peakCenter + holdHalf
-        {
-            const { fovHoldRatio } = PARAMS;
-            const expandEnd      = flyTime * (fovPeakRatio - fovHoldRatio / 2);
-            const contractStart  = flyTime * (fovPeakRatio + fovHoldRatio / 2);
-            tl.to(this.camera, {
-                fov: fovWarp,
-                duration: expandEnd,
-                ease: 'power2.in',
-                onUpdate: () => this.camera.updateProjectionMatrix(),
-            }, 0);
-            tl.to(this.camera, {
-                fov: fovDefault,
-                duration: flyTime - contractStart,
-                ease: 'power2.out',
-                onUpdate: () => this.camera.updateProjectionMatrix(),
-            }, contractStart);
-        }
-
-        // ── Bloom 增強（t=0 起，與飛行同步）──
-        tl.to(this.bloom, {
-            strength: bloomPeak,
-            duration: bloomTime,
-            ease: 'power2.in',
-        }, 0);
-    }
-
     // ─── 白閃過場 → 重置場景 ─────────────────────────────────────────────────
     _flashAndReset() {
         const { flashTime, fadeTime, bloomDefault } = PARAMS;
@@ -2010,6 +2166,7 @@ class StarField {
         const { flashTime, flashUiFadeTime, flashExposurePeak } = PARAMS;
         const exposureDelay    = flashUiFadeTime * 0.5;
         const exposureDuration = flashTime - exposureDelay;
+        this._transitioning    = true; // 讓 _tick 停止覆寫星雲 iOpacity，過場 tween 才能淡出星雲
 
         // 第一步：淡出所有 UI（HUD、選單、返回鍵、標題、黑邊、標籤與瞄準環）
         const uiTargets = [this._hud, this._menu, this._backBtn, this._menuStarName, this._vignette];
@@ -2042,6 +2199,7 @@ class StarField {
         this.camera.updateProjectionMatrix();
     }
 
+    // ═══════════════════════════ 事件與主迴圈 ════════════════════════════════
     // ─── 事件綁定 ────────────────────────────────────────────────────────────
     _bindEvents() {
         // 點擊選項框 → 飛向對應星星
@@ -2060,8 +2218,13 @@ class StarField {
         });
 
         // 點擊背景 → 飛向隨機星星（debounce 防止雙擊誤觸）
+        // 僅在「點到 canvas 本身」時觸發：避免點選單／面板／返回鍵等 UI 時誤飛
         let timer = null;
-        window.addEventListener('click', () => {
+        window.addEventListener('click', (e) => {
+            // 只接受點在 WebGL canvas 上的點擊（UI 元素皆為 DOM，不會是 canvas）
+            if (e.target !== this.renderer.domElement) return;
+            // 已在軌道中或動畫進行中 → 不接受背景隨機飛行
+            if (this._orbiting || this._busy) return;
             clearTimeout(timer);
             timer = setTimeout(() => {
                 if (this._busy) return;
@@ -2118,6 +2281,12 @@ class StarField {
         const loop = () => {
             requestAnimationFrame(loop);
 
+            // 星星漂移：每幀疊加速度（far 全程、near 僅可見時；driftSpeed=0 時略過）
+            if (PARAMS.driftSpeed > 0) {
+                this._applyDrift(this.stars, this._vel);
+                if (this.starsNear.visible) this._applyDrift(this.starsNear, this._velNear);
+            }
+
             this._updateLabelPositions(); // 同步標籤位置
 
             // 相機繞星球軌道運行
@@ -2134,21 +2303,26 @@ class StarField {
                 );
 
                 // lookAt 目標：加上水平偏移（沿軌道切線方向，保持偏移感一致）
-                const tangent = new THREE.Vector3(
+                this._tmpTangent.set(
                     Math.cos(this._orbitAngle),  // 切線 X
                     0,
                     -Math.sin(this._orbitAngle)  // 切線 Z
                 ).multiplyScalar(PARAMS.cameraLookOffsetX);
-                this.camera.lookAt(this._lastTarget.clone().add(tangent));
+                this._tmpLookAt.copy(this._lastTarget).add(this._tmpTangent);
+                this.camera.lookAt(this._tmpLookAt);
             }
 
             // 更新星球 shader 時間（帶動大氣旋轉等動畫）
             if (this._planetMesh.visible) {
                 this._planetMat.uniforms.uTime.value += 0.016;
+            }
 
-            // 星雲時間推進
+            // 星雲時間推進（與星球是否可見無關，初始畫面也需跟隨相機旋轉）
             if (this._nebulaMat) {
-                this._nebulaMat.uniforms.iOpacity.value    = PARAMS.nebulaOpacity;
+                // 過場中不覆寫 iOpacity，讓過場 tween 能控制星雲淡出
+                if (!this._transitioning) {
+                    this._nebulaMat.uniforms.iOpacity.value = PARAMS.nebulaOpacity;
+                }
                 this._nebulaMat.uniforms.uBrightness.value = PARAMS.nebulaBrightness;
                 // 強制更新相機矩陣（避免動畫切換時讀到上一幀的舊值造成跳動）
                 this.camera.updateMatrixWorld(true);
@@ -2158,7 +2332,6 @@ class StarField {
                 this._nebulaInvProjView
                     .multiplyMatrices(this.camera.projectionMatrix, this._nebulaRotInv)
                     .invert();
-            }
             }
 
             // 運動模糊：根據 FOV 與閾值計算當前強度
